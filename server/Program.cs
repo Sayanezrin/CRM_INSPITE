@@ -6,8 +6,13 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddCors(options =>
 {
+    var corsOrigins = builder.Configuration["CORS_ORIGINS"]
+        ?? Environment.GetEnvironmentVariable("CORS_ORIGINS")
+        ?? "http://127.0.0.1:5174,http://localhost:5174";
+    var origins = corsOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
     options.AddDefaultPolicy(policy =>
-        policy.WithOrigins("http://127.0.0.1:5174", "http://localhost:5174")
+        policy.WithOrigins(origins)
             .AllowAnyHeader()
             .AllowAnyMethod());
 });
@@ -116,4 +121,5 @@ app.MapPost("/api/tasks", async (PeopleStore store, TaskRequest request) =>
     return Results.Created($"/api/tasks/{task.Id}", task);
 });
 
-app.Run("http://localhost:5018");
+var port = Environment.GetEnvironmentVariable("PORT") ?? "5018";
+app.Run($"http://0.0.0.0:{port}");
