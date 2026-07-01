@@ -53,7 +53,8 @@ app.Use(async (context, next) =>
     await next();
 });
 
-app.MapGet("/", () => Results.Redirect("/api/bootstrap"));
+app.MapGet("/", () => Results.Ok(new { ok = true, service = "InspitePeople.Api" }));
+app.MapGet("/api/health", () => Results.Ok(new { ok = true, checkedAt = DateTimeOffset.UtcNow }));
 app.MapPost("/api/auth/google", async (AuthStore auth, GoogleLoginRequest request) =>
 {
     try
@@ -78,7 +79,28 @@ app.MapPost("/api/auth/password", async (AuthStore auth, PasswordLoginRequest re
 });
 app.MapGet("/api/portal", async (PortalStore store) => await store.GetAsync());
 app.MapPut("/api/portal", async (PortalStore store, JsonElement payload) => await store.SaveAsync(payload));
-app.MapGet("/api/bootstrap", async (PeopleStore store) => await store.GetBootstrapAsync());
+app.MapGet("/api/bootstrap", async (IServiceProvider services) =>
+{
+    try
+    {
+        var store = services.GetRequiredService<PeopleStore>();
+        return Results.Ok(await store.GetBootstrapAsync());
+    }
+    catch (Exception ex)
+    {
+        return Results.Ok(new
+        {
+            employee = (object?)null,
+            modules = Array.Empty<object>(),
+            lists = new Dictionary<string, object>(),
+            candidates = Array.Empty<object>(),
+            timeSummary = new { totalHours = 0, submittedHours = 0, pendingHours = 0, logs = Array.Empty<object>() },
+            tasks = Array.Empty<object>(),
+            warning = "Bootstrap data is unavailable.",
+            detail = app.Environment.IsDevelopment() ? ex.Message : null
+        });
+    }
+});
 app.MapGet("/api/employee", (PeopleStore store) => store.Employee);
 app.MapGet("/api/modules", (PeopleStore store) => store.Modules);
 app.MapGet("/api/lists/{module}", (PeopleStore store, string module) =>
