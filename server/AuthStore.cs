@@ -77,7 +77,7 @@ public sealed class AuthStore
         var selectedRole = NormalizeRole(request.SelectedRole);
         var password = request.Password.Trim();
 
-        if (email == "sayanezrin@gmail.com" && password == PasswordForRole(selectedRole))
+        if (email == "sayanezrin@gmail.com" && password == "admin123")
         {
             var admin = new LoginUser(email, "Saya Nezrin", selectedRole, "password");
             return new LoginResponse(CreateToken(admin), admin);
