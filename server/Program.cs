@@ -1,4 +1,6 @@
 using InspitePeople.Api;
+using Google.Apis.Auth;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -10,12 +12,67 @@ builder.Services.AddCors(options =>
             .AllowAnyMethod());
 });
 builder.Services.AddSingleton<PeopleStore>();
+builder.Services.AddSingleton<PortalStore>();
+builder.Services.AddSingleton<AuthStore>();
 
 var app = builder.Build();
 
 app.UseCors();
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path;
+    var isPublicApi = path.StartsWithSegments("/api/auth") || path == "/api/bootstrap";
+    if (!path.StartsWithSegments("/api") || isPublicApi)
+    {
+        await next();
+        return;
+    }
+
+    var authStore = context.RequestServices.GetRequiredService<AuthStore>();
+    var session = authStore.ValidateBearerToken(context.Request.Headers.Authorization);
+    if (session is null)
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        await context.Response.WriteAsJsonAsync(new { error = "Authentication required." });
+        return;
+    }
+
+    if (!authStore.IsAllowed(session, path, context.Request.Method))
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        await context.Response.WriteAsJsonAsync(new { error = "This role cannot access this API route." });
+        return;
+    }
+
+    context.Items["session"] = session;
+    await next();
+});
 
 app.MapGet("/", () => Results.Redirect("/api/bootstrap"));
+app.MapPost("/api/auth/google", async (AuthStore auth, GoogleLoginRequest request) =>
+{
+    try
+    {
+        return Results.Ok(await auth.LoginWithGoogleAsync(request));
+    }
+    catch (Exception ex) when (ex is InvalidJwtException or InvalidOperationException or UnauthorizedAccessException)
+    {
+        return Results.Unauthorized();
+    }
+});
+app.MapPost("/api/auth/password", async (AuthStore auth, PasswordLoginRequest request) =>
+{
+    try
+    {
+        return Results.Ok(await auth.LoginWithPasswordAsync(request));
+    }
+    catch (UnauthorizedAccessException)
+    {
+        return Results.Unauthorized();
+    }
+});
+app.MapGet("/api/portal", async (PortalStore store) => await store.GetAsync());
+app.MapPut("/api/portal", async (PortalStore store, JsonElement payload) => await store.SaveAsync(payload));
 app.MapGet("/api/bootstrap", async (PeopleStore store) => await store.GetBootstrapAsync());
 app.MapGet("/api/employee", (PeopleStore store) => store.Employee);
 app.MapGet("/api/modules", (PeopleStore store) => store.Modules);

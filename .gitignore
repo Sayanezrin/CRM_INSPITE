@@ -6,3 +6,9 @@ obj/
 .vs/
 .vscode/
 *.user
+.env
+.env.local
+client/.env
+client/.env.local
+client/*.log
+server/App_Data/
