@@ -4,7 +4,6 @@ import inspiteLogoImage from "./assets/inspite-logo.png";
 const STORAGE_KEY = "inspite.people.role.portal";
 const SESSION_KEY = "inspite.people.role.session";
 const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:5018";
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
 
 const roles = {
   admin: { title: "Admin", email: "sayanezrin@gmail.com", password: "admin123" },
@@ -137,28 +136,6 @@ function fileToDataUrl(file) {
   });
 }
 
-function loadGoogleIdentityScript() {
-  return new Promise((resolve, reject) => {
-    if (window.google?.accounts?.id) {
-      resolve(window.google);
-      return;
-    }
-    const existingScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
-    if (existingScript) {
-      existingScript.addEventListener("load", () => resolve(window.google), { once: true });
-      existingScript.addEventListener("error", reject, { once: true });
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve(window.google);
-    script.onerror = reject;
-    document.head.appendChild(script);
-  });
-}
-
 function App() {
   const [store, setStore] = useState(readState);
   const [session, setSession] = useState(readSession);
@@ -251,43 +228,6 @@ function LoginScreen({ onLogin }) {
     }
   };
 
-  const googleSignIn = async () => {
-    setError("");
-    if (!GOOGLE_CLIENT_ID) {
-      setError("Google login needs VITE_GOOGLE_CLIENT_ID in client/.env.local.");
-      return;
-    }
-    try {
-      const google = await loadGoogleIdentityScript();
-      google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
-        auto_select: false,
-        callback: async (credentialResponse) => {
-          if (!credentialResponse.credential) {
-            setError("Google sign-in was cancelled.");
-            return;
-          }
-          try {
-            const login = await apiJson("/api/auth/google", {
-              method: "POST",
-              body: JSON.stringify({ credential: credentialResponse.credential, selectedRole })
-            });
-            onLogin({ ...login.user, token: login.token });
-          } catch {
-            setError("This Google account is not registered for the selected dashboard.");
-          }
-        }
-      });
-      google.accounts.id.prompt((notification) => {
-        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-          setError("Google account chooser could not open. Check Google OAuth origin setup.");
-        }
-      });
-    } catch {
-      setError("Could not open Google account chooser.");
-    }
-  };
-
   return (
     <div className="login-page">
       <section className="login-copy">
@@ -304,11 +244,6 @@ function LoginScreen({ onLogin }) {
             </button>
           ))}
         </div>
-        <div className="google-login-box">
-          <button type="button" className="google-login-button" onClick={googleSignIn}><span>G</span>Continue with Google</button>
-          <small>Server verifies Google and allows only registered role emails.</small>
-        </div>
-        <div className="login-divider"><span>or use password</span></div>
         <label>Email<input value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
         <label>Password
           <span className="password-field">

@@ -92,58 +92,6 @@ button { cursor: pointer; }
   font-weight: 700;
 }
 
-.google-login-box {
-  display: grid;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid #d8e2ee;
-  border-radius: 7px;
-  background: #f8fbff;
-}
-
-.google-login-button {
-  min-height: 40px;
-  border: 1px solid #cbd6e3;
-  border-radius: 6px;
-  background: #fff;
-  color: #223047;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-}
-
-.google-login-button span {
-  width: 23px;
-  height: 23px;
-  border-radius: 50%;
-  border: 1px solid #d7e0eb;
-  display: grid;
-  place-items: center;
-  color: #1769e0;
-}
-
-.google-login-box small {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.35;
-}
-
-.login-divider {
-  height: 1px;
-  background: #e1e8f1;
-  display: grid;
-  place-items: center;
-}
-
-.login-divider span {
-  background: #fff;
-  padding: 0 10px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
 label {
   display: grid;
   gap: 7px;
