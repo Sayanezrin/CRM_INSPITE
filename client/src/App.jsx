@@ -137,17 +137,6 @@ function fileToDataUrl(file) {
   });
 }
 
-function viewReceipt(receipt) {
-  if (!receipt?.dataUrl) return;
-  const win = window.open("", "_blank", "noopener,noreferrer");
-  if (!win) return;
-  if (receipt.type === "application/pdf") {
-    win.document.write(`<iframe title="Receipt" src="${receipt.dataUrl}" style="border:0;width:100%;height:100vh"></iframe>`);
-    return;
-  }
-  win.document.write(`<img alt="Receipt" src="${receipt.dataUrl}" style="max-width:100%;height:auto;display:block;margin:0 auto" />`);
-}
-
 function loadGoogleIdentityScript() {
   return new Promise((resolve, reject) => {
     if (window.google?.accounts?.id) {
@@ -1058,6 +1047,8 @@ function LeaveTable({ leaves, title = "Leave Records" }) {
 }
 
 function ExpenseTable({ expenses, title = "Expense Records", className = "" }) {
+  const [receiptPreview, setReceiptPreview] = useState(null);
+
   if (!expenses.length) {
     return (
       <Panel title={title} className={className}>
@@ -1087,12 +1078,52 @@ function ExpenseTable({ expenses, title = "Expense Records", className = "" }) {
             <span>{expense.date}</span>
             <span>{money(expense.amount)}</span>
             <span>{expense.notes || "--"}</span>
-            <span>{expense.receipt ? <button className="table-action" onClick={() => viewReceipt(expense.receipt)}>View Receipt</button> : "--"}</span>
+            <span>{expense.receipt ? <button type="button" className="table-action" onClick={() => setReceiptPreview(expense.receipt)}>View Receipt</button> : "--"}</span>
             <span><Status status={expense.status} /></span>
           </div>
         ))}
       </div>
+      {receiptPreview && (
+        <ReceiptPreviewModal receipt={receiptPreview} onClose={() => setReceiptPreview(null)} />
+      )}
     </Panel>
+  );
+}
+
+function ReceiptPreviewModal({ receipt, onClose }) {
+  const isPdf = receipt.type === "application/pdf" || receipt.name?.toLowerCase().endsWith(".pdf");
+
+  return (
+    <div className="receipt-modal-backdrop" role="presentation" onClick={onClose}>
+      <section className="receipt-modal" role="dialog" aria-modal="true" aria-label="Receipt preview" onClick={(event) => event.stopPropagation()}>
+        <header>
+          <div>
+            <h2>Receipt Preview</h2>
+            <p>{receipt.name || "Uploaded receipt"}</p>
+          </div>
+          <button type="button" className="icon-action" aria-label="Close receipt preview" title="Close" onClick={onClose}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 6l12 12" />
+              <path d="M18 6L6 18" />
+            </svg>
+          </button>
+        </header>
+        <div className="receipt-preview-frame">
+          {!receipt.dataUrl ? (
+            <p className="empty-note">Receipt data is unavailable for this record.</p>
+          ) : isPdf ? (
+            <iframe title={receipt.name || "Receipt PDF"} src={receipt.dataUrl} />
+          ) : (
+            <img src={receipt.dataUrl} alt={receipt.name || "Receipt"} />
+          )}
+        </div>
+        {receipt.dataUrl && (
+          <a className="secondary-button receipt-download-link" href={receipt.dataUrl} download={receipt.name || "receipt"}>
+            Download Receipt
+          </a>
+        )}
+      </section>
+    </div>
   );
 }
 

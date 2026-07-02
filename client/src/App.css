@@ -591,6 +591,82 @@ select:focus {
 .status.approved { background: #e8f7ef; color: var(--green); }
 .status.rejected { background: #ffecef; color: var(--red); }
 
+.receipt-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  padding: 24px;
+  background: rgba(15, 24, 38, .62);
+  display: grid;
+  place-items: center;
+}
+
+.receipt-modal {
+  width: min(920px, 100%);
+  max-height: calc(100vh - 48px);
+  border: 1px solid #d9e2ed;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(15, 24, 38, .28);
+  display: grid;
+  grid-template-rows: auto minmax(220px, 1fr) auto;
+  overflow: hidden;
+}
+
+.receipt-modal header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid #e2e9f2;
+}
+
+.receipt-modal header div {
+  min-width: 0;
+}
+
+.receipt-modal h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+.receipt-modal p {
+  margin: 0;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.receipt-preview-frame {
+  min-height: 360px;
+  background: #f5f8fc;
+  overflow: auto;
+  display: grid;
+  place-items: center;
+}
+
+.receipt-preview-frame img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+.receipt-preview-frame iframe {
+  width: 100%;
+  height: min(70vh, 680px);
+  border: 0;
+  background: #fff;
+}
+
+.receipt-download-link {
+  justify-self: end;
+  margin: 14px 18px 18px;
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
 .empty-note {
   margin: 0;
   min-height: 74px;
@@ -760,6 +836,28 @@ select:focus {
   .approval-row button,
   .approval-row .status {
     width: 100%;
+  }
+
+  .receipt-modal-backdrop {
+    padding: 10px;
+  }
+
+  .receipt-modal {
+    max-height: calc(100dvh - 20px);
+  }
+
+  .receipt-modal header {
+    padding: 12px;
+  }
+
+  .receipt-preview-frame {
+    min-height: 260px;
+  }
+
+  .receipt-download-link {
+    justify-self: stretch;
+    justify-content: center;
+    margin: 12px;
   }
 
   .data-table {
