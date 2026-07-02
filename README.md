@@ -1,6 +1,6 @@
 # Inspite People System
 
-React + ASP.NET Core implementation of the Inspite HR portal UI shown in the supplied reference screenshots.
+React + Node.js implementation of the Inspite HR portal UI shown in the supplied reference screenshots.
 
 ## Run
 
@@ -14,13 +14,8 @@ $env:MONGODB_PORTAL_COLLECTION="portalState"
 
 ```powershell
 cd D:\zoho_clone\server
-dotnet run
-```
-
-If `dotnet` is not recognized in PowerShell, use:
-
-```powershell
-& "C:\Program Files\dotnet\dotnet.exe" run
+npm install
+npm start
 ```
 
 ```powershell
@@ -29,11 +24,33 @@ npm install
 npm run dev
 ```
 
-The server currently targets `.NET 10` because this machine has the .NET 10 runtime installed. The React app expects the API at `http://localhost:5018`. If MongoDB is not configured, the dashboard portal data falls back to `server/App_Data/portal-store.json` for local development.
+In local development, the React app expects the API at `http://localhost:5018`. In production on Vercel, the React app calls the same deployment through relative `/api` routes. If MongoDB is not configured, the dashboard portal data falls back to `server/App_Data/portal-store.json` for local development.
 
 The main dashboard data is stored in MongoDB database `inspite_people`, collection `portalState`. Replace `<db_password>` with the real MongoDB Atlas password before running the backend.
+
+## Vercel
+
+This repo is configured as one Vercel app:
+
+- React builds to `dist`
+- Node.js API routes are served from `api/[...path].js`
+- Browser requests to `/api/*` run the Express API on Vercel serverless functions
+- All other routes serve the React app
+
+Set these Vercel environment variables:
+
+```text
+MONGODB_CONNECTION_STRING=...
+MONGODB_DATABASE_NAME=inspite_people
+MONGODB_PORTAL_COLLECTION=portalState
+APP_AUTH_SECRET=use-a-long-random-secret
+CORS_ORIGINS=https://your-vercel-domain.vercel.app
+```
+
+`VITE_API_URL` is not required on Vercel because the frontend uses same-origin `/api` routes by default.
 
 ## Structure
 
 - `client`: Vite React frontend
-- `server`: ASP.NET Core minimal API backend with MongoDB storage
+- `api`: Vercel serverless API entrypoint
+- `server`: Node.js Express API source with MongoDB storage

@@ -3,7 +3,7 @@ import inspiteLogoImage from "./assets/inspite-logo.png";
 
 const STORAGE_KEY = "inspite.people.role.portal";
 const SESSION_KEY = "inspite.people.role.session";
-const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:5018";
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://127.0.0.1:5018" : "");
 
 const roles = {
   admin: { title: "Admin", email: "sayanezrin@gmail.com", password: "admin123" },

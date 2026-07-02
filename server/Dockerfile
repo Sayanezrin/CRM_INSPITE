@@ -1,17 +1,12 @@
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
-WORKDIR /src
-
-COPY InspitePeople.Api.csproj ./
-RUN dotnet restore
-
-COPY . ./
-RUN dotnet publish -c Release -o /app/out --no-restore
-
-FROM mcr.microsoft.com/dotnet/aspnet:10.0
+FROM node:22-alpine
 WORKDIR /app
-COPY --from=build /app/out ./
 
-ENV ASPNETCORE_ENVIRONMENT=Production
+COPY package*.json ./
+RUN npm install --omit=dev
+
+COPY src ./src
+
+ENV NODE_ENV=production
 EXPOSE 8080
 
-ENTRYPOINT ["dotnet", "InspitePeople.Api.dll"]
+CMD ["npm", "start"]
