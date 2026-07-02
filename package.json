@@ -6,7 +6,7 @@
     "client": "cd client && npm run dev",
     "server": "cd server && dotnet run",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
-    "build": "cd client && npm install && npm run build"
+    "build": "cd client && npm install && npm run build && cd .. && node scripts/copy-client-dist.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
