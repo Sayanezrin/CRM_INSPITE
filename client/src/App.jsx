@@ -71,6 +71,40 @@ function writeSession(value) {
   }
 }
 
+function normalizeRole(role) {
+  return role?.trim().toLowerCase() === "hr / accountant" ? "hr" : role?.trim().toLowerCase() || "employee";
+}
+
+function getLocalPasswordLogin({ email, password, selectedRole, store }) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedRole = normalizeRole(selectedRole);
+  const expectedPassword = roles[normalizedRole]?.password;
+  if (!expectedPassword || password.trim() !== expectedPassword) return null;
+
+  if (normalizedEmail === roles.admin.email && normalizedRole === "admin") {
+    return { email: normalizedEmail, name: "Saya Nezrin", role: "admin", provider: "local-password", token: `local-${Date.now()}` };
+  }
+
+  if (normalizedEmail === roles.hr.email && normalizedRole === "hr") {
+    return { email: normalizedEmail, name: roles.hr.title, role: "hr", provider: "local-password", token: `local-${Date.now()}` };
+  }
+
+  const registeredUser = [
+    ...(store.logins || []),
+    ...(store.employees || [])
+  ].find((user) => user.email?.trim().toLowerCase() === normalizedEmail && normalizeRole(user.accessRole) === normalizedRole);
+
+  if (!registeredUser && normalizedEmail !== roles.employee.email) return null;
+
+  return {
+    email: normalizedEmail,
+    name: registeredUser?.name || roles[normalizedRole]?.title || "Employee",
+    role: normalizedRole,
+    provider: "local-password",
+    token: `local-${Date.now()}`
+  };
+}
+
 async function apiJson(path, options = {}) {
   const session = readSession();
   const response = await fetch(`${API_URL}${path}`, {
@@ -81,7 +115,11 @@ async function apiJson(path, options = {}) {
       ...(options.headers || {})
     }
   });
-  if (!response.ok) throw new Error(`API request failed: ${response.status}`);
+  if (!response.ok) {
+    const error = new Error(`API request failed: ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
   if (response.status === 204) return null;
   return response.json();
 }
@@ -189,7 +227,7 @@ function App() {
   };
 
   if (!session) {
-    return <LoginScreen onLogin={(nextSession) => { writeSession(nextSession); setSession(nextSession); setActivePage("home"); }} />;
+    return <LoginScreen store={store} onLogin={(nextSession) => { writeSession(nextSession); setSession(nextSession); setActivePage("home"); }} />;
   }
 
   return (
@@ -203,7 +241,7 @@ function App() {
   );
 }
 
-function LoginScreen({ onLogin }) {
+function LoginScreen({ store, onLogin }) {
   const [selectedRole, setSelectedRole] = useState("admin");
   const [form, setForm] = useState({ email: roles.admin.email, password: roles.admin.password });
   const [error, setError] = useState("");
@@ -223,8 +261,15 @@ function LoginScreen({ onLogin }) {
         body: JSON.stringify({ email: form.email, password: form.password, selectedRole })
       });
       onLogin({ ...login.user, token: login.token });
-    } catch {
-      setError("This email is not allowed for the selected dashboard.");
+    } catch (error) {
+      const localLogin = getLocalPasswordLogin({ ...form, selectedRole, store });
+      if (localLogin) {
+        onLogin(localLogin);
+        return;
+      }
+      setError(error.status === 401
+        ? "Check the selected dashboard, email, and password."
+        : "Backend login is unavailable. Check the selected dashboard, email, and password.");
     }
   };
 
