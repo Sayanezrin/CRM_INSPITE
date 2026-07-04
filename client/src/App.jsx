@@ -180,6 +180,7 @@ function money(value) {
 const ledgerCsvColumns = ["id", "type", "date", "account", "category", "amount", "note", "createdBy"];
 const expenseCsvColumns = ["id", "employeeId", "employeeName", "category", "date", "amount", "notes", "status", "submittedAt", "createdBy", "receiptName"];
 const financeExportColumns = ["source", "id", "type", "date", "employeeName", "account", "category", "amount", "status", "note", "createdBy", "receiptName"];
+const debitExpenseCategories = ["Salary", "Food & Meals", "Office Supplies", "Local Transportation (Cab, Auto, Parking, Toll)", "Other"];
 const TOAST_EVENT = "inspite-toast";
 
 function toast(message, type = "success") {
@@ -288,11 +289,27 @@ function isWithinPeriod(value, period) {
   return date >= start && date <= end;
 }
 
+function ledgerEntryFromExpense(expense, createdBy = expense.createdBy || "Admin") {
+  return {
+    id: uid("TXN"),
+    type: "Debit",
+    date: expense.date || expense.submittedAt || today(),
+    account: expense.employeeName || "Admin / Company",
+    category: expense.category,
+    amount: Number(expense.amount || 0),
+    note: expense.notes || "",
+    createdBy,
+    sourceExpenseId: expense.id
+  };
+}
+
 function buildFinanceRows(store) {
-  const ledgerRows = (store.ledger || []).map((item) => ({
+  const ledgerRows = (store.ledger || [])
+    .filter((item) => String(item.type || "Debit").toLowerCase() === "debit")
+    .map((item) => ({
     source: "Ledger",
     id: item.id,
-    type: item.type || "Debit",
+    type: "Debit",
     date: item.date,
     employeeName: "",
     account: item.account,
@@ -304,7 +321,10 @@ function buildFinanceRows(store) {
     receiptName: ""
   }));
 
-  const expenseRows = (store.expenses || []).map((item) => ({
+  const ledgerExpenseIds = new Set((store.ledger || []).map((item) => item.sourceExpenseId).filter(Boolean));
+  const expenseRows = (store.expenses || [])
+    .filter((item) => item.status === "Approved" && !ledgerExpenseIds.has(item.id))
+    .map((item) => ({
     source: "Expense",
     id: item.id,
     type: "Debit",
@@ -671,7 +691,7 @@ function RolePage({ session, activePage, store, commit }) {
 function AdminPage({ activePage, store, commit, session }) {
   if (activePage === "logins") return <DashboardGrid><AddLoginPanel commit={commit} /><LoginAccessTable logins={store.logins || []} commit={commit} className="full-row-panel" /></DashboardGrid>;
   if (activePage === "employees") return <DashboardGrid><AddEmployeePanel commit={commit} /><EmployeeTable employees={store.employees} commit={commit} canDelete className="full-row-panel" /></DashboardGrid>;
-  if (activePage === "finance") return <DashboardGrid><FinancePanel store={store} canExport className="full-row-panel" /><LedgerTable store={store} className="full-row-panel" /></DashboardGrid>;
+  if (activePage === "finance") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} createdBy="Admin" title="Add Debit Expense" /><FinancePanel store={store} canExport className="full-row-panel" /><LedgerTable store={store} className="full-row-panel" /></DashboardGrid>;
   if (activePage === "leave") return <DashboardGrid><ApprovalPanel title="Leave Applications" items={store.leaves} kind="leaves" commit={commit} /><LeaveTable leaves={store.leaves} /></DashboardGrid>;
   if (activePage === "expenses") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} /><ApprovalPanel title="Expense Approvals" items={store.expenses} kind="expenses" commit={commit} className="full-row-panel" /><ExpenseTable expenses={store.expenses} className="full-row-panel" /></DashboardGrid>;
   if (activePage === "attendance") return <AttendancePage store={store} commit={commit} session={session} />;
@@ -683,7 +703,7 @@ function HrPage({ activePage, store, commit, session }) {
   if (activePage === "leave") return <DashboardGrid><LeaveTable leaves={store.leaves} /></DashboardGrid>;
   if (activePage === "expenses") return <DashboardGrid><ApprovalPanel title="Expense Approval Queue" items={store.expenses} kind="expenses" commit={commit} /><ExpenseTable expenses={store.expenses} /></DashboardGrid>;
   if (activePage === "attendance") return <AttendancePage store={store} commit={commit} session={session} />;
-  if (activePage === "finance") return <DashboardGrid><LedgerEntryPanel commit={commit} className="full-row-panel" /><FinancePanel store={store} canExport className="full-row-panel" /></DashboardGrid>;
+  if (activePage === "finance") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} createdBy="HR" title="Add Debit Expense" /><FinancePanel store={store} canExport className="full-row-panel" /><LedgerTable store={store} className="full-row-panel" /></DashboardGrid>;
   return <DashboardGrid><FinancePanel store={store} canExport className="full-row-panel" /><ApprovalPanel title="Expense Approval Queue" items={store.expenses} kind="expenses" commit={commit} className="full-row-panel" /></DashboardGrid>;
 }
 
@@ -1047,8 +1067,8 @@ function LedgerEntryPanel({ commit, className = "" }) {
   );
 }
 
-function AdminExpenseFormPanel({ store, commit }) {
-  const [expense, setExpense] = useState({ employeeId: "company", category: "Travel", amount: "", date: "", notes: "" });
+function AdminExpenseFormPanel({ store, commit, createdBy = "Admin", title = "Add Expense" }) {
+  const [expense, setExpense] = useState({ employeeId: "company", category: "Salary", amount: "", date: "", notes: "" });
   const [receipt, setReceipt] = useState(null);
   const [receiptError, setReceiptError] = useState("");
 
@@ -1088,12 +1108,10 @@ function AdminExpenseFormPanel({ store, commit }) {
       return;
     }
     const selectedEmployee = store.employees.find((employee) => employee.id === expense.employeeId);
-    commit((current) => ({
-      ...current,
-      expenses: [{
+    const expenseRecord = {
         id: uid("EXP"),
         employeeId: selectedEmployee?.id || "ADMIN",
-        employeeName: selectedEmployee?.name || "Admin / Company",
+        employeeName: selectedEmployee?.name || `${createdBy} / Company`,
         category: expense.category,
         amount: Number(expense.amount),
         date: expense.date,
@@ -1101,30 +1119,30 @@ function AdminExpenseFormPanel({ store, commit }) {
         receipt,
         status: "Approved",
         submittedAt: today(),
-        createdBy: "Admin"
-      }, ...current.expenses]
+        createdBy
+    };
+    const ledgerRecord = ledgerEntryFromExpense(expenseRecord, createdBy);
+    commit((current) => ({
+      ...current,
+      expenses: [expenseRecord, ...current.expenses],
+      ledger: [ledgerRecord, ...(current.ledger || [])]
     }));
-    toast("Expense added.");
-    setExpense({ employeeId: "company", category: "Travel", amount: "", date: "", notes: "" });
+    toast("Debit expense added to finance and ledger.");
+    setExpense({ employeeId: "company", category: "Salary", amount: "", date: "", notes: "" });
     setReceipt(null);
     setReceiptError("");
     event.currentTarget.reset();
   };
 
   return (
-    <Panel title="Add Expense" className="full-row-panel">
+    <Panel title={title} className="full-row-panel">
       <form className="form-grid" onSubmit={addExpense}>
         <select value={expense.employeeId} onChange={(event) => setExpense({ ...expense, employeeId: event.target.value })}>
           <option value="company">Admin / Company Expense</option>
           {store.employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
         </select>
         <select value={expense.category} onChange={(event) => setExpense({ ...expense, category: event.target.value })}>
-          <option>Travel</option>
-          <option>Food</option>
-          <option>Uber</option>
-          <option>Office Supplies</option>
-          <option>Salary</option>
-          <option>Other</option>
+          {debitExpenseCategories.map((category) => <option key={category}>{category}</option>)}
         </select>
         <input type="number" placeholder="Amount" value={expense.amount} onChange={(event) => setExpense({ ...expense, amount: event.target.value })} />
         <input placeholder="dd/mm/yyyy" value={expense.date} onChange={(event) => setExpense({ ...expense, date: event.target.value })} />
@@ -1559,9 +1577,10 @@ function EmployeeEditModal({ employee, onClose, onSave }) {
 }
 
 function LedgerTable({ store, className = "" }) {
+  const debitLedger = (store.ledger || []).filter((item) => String(item.type || "Debit").toLowerCase() === "debit");
   return (
-    <Panel title="Ledger Records" className={className}>
-      <DataTable rows={store.ledger} columns={["id", "type", "date", "account", "category", "amount", "note"]} />
+    <Panel title="Debit Ledger Records" className={className}>
+      <DataTable rows={debitLedger} columns={["id", "type", "date", "account", "category", "amount", "note"]} />
     </Panel>
   );
 }
@@ -1676,6 +1695,7 @@ function FinancePanel({ store, canExport = false, className = "" }) {
   const totals = getTotals(financeRows);
   const approvedExpenses = (store.expenses || []).filter((item) => item.status === "Approved").reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const pendingExpenses = (store.expenses || []).filter((item) => item.status === "Pending").reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const adminHrExpenses = (store.expenses || []).filter((item) => item.status === "Approved" && item.createdBy !== "Employee").reduce((sum, item) => sum + Number(item.amount || 0), 0);
 
   const downloadPeriodReport = (period) => {
     const label = `${period.charAt(0).toUpperCase()}${period.slice(1)} Finance Report`;
@@ -1698,13 +1718,12 @@ function FinancePanel({ store, canExport = false, className = "" }) {
   };
 
   return (
-    <Panel title="Finance Register" className={className}>
+    <Panel title="Debit Finance Register" className={className}>
       <div className="finance-summary">
-        <Metric label="Credit" value={money(totals.credit)} />
         <Metric label="Debit" value={money(totals.debit)} />
-        <Metric label="Balance" value={money(totals.credit - totals.debit)} />
         <Metric label="Approved Expenses" value={money(approvedExpenses)} />
         <Metric label="Pending Expenses" value={money(pendingExpenses)} />
+        <Metric label="Admin / HR Expenses" value={money(adminHrExpenses)} />
         <Metric label="Finance Rows" value={financeRows.length} />
       </div>
       <div className="finance-export-actions">
@@ -1721,10 +1740,25 @@ function FinancePanel({ store, canExport = false, className = "" }) {
 
 function ApprovalPanel({ title, items, kind, commit, className = "" }) {
   const updateStatus = (id, status) => {
-    commit((current) => ({
-      ...current,
-      [kind]: current[kind].map((item) => item.id === id ? { ...item, status } : item)
-    }));
+    commit((current) => {
+      const targetItem = current[kind].find((item) => item.id === id);
+      const nextItems = current[kind].map((item) => item.id === id ? { ...item, status } : item);
+      if (kind !== "expenses" || status !== "Approved" || !targetItem) {
+        return { ...current, [kind]: nextItems };
+      }
+
+      const alreadyInLedger = (current.ledger || []).some((ledgerItem) => ledgerItem.sourceExpenseId === targetItem.id);
+      if (alreadyInLedger) {
+        return { ...current, [kind]: nextItems };
+      }
+
+      const approvedExpense = { ...targetItem, status };
+      return {
+        ...current,
+        [kind]: nextItems,
+        ledger: [ledgerEntryFromExpense(approvedExpense, "Approval"), ...(current.ledger || [])]
+      };
+    });
     toast(`${kind === "leaves" ? "Leave" : "Expense"} ${status.toLowerCase()}.`);
   };
 
