@@ -511,7 +511,7 @@ button:disabled {
 
 .employee-records .data-head,
 .employee-records .data-row {
-  grid-template-columns: 130px 170px 230px 170px 150px 140px 120px 130px 130px 140px 150px 130px 130px 140px 170px 170px 240px 110px 104px;
+  grid-template-columns: 130px 170px 230px 170px 150px 140px 120px 130px 130px 140px 150px 150px 130px 130px 140px 170px 170px 240px 110px 104px;
 }
 
 .login-records .data-head,

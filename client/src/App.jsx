@@ -730,6 +730,7 @@ function EmployeeProfilePanel({ employee }) {
     ["Birthday", employee.birthday],
     ["Mobile", employee.mobile],
     ["Alternative Number", employee.alternativeNumber],
+    ["Aadhaar Number", employee.aadhaar],
     ["PAN", employee.pan],
     ["UAN", employee.uan],
     ["Experience", employee.experience],
@@ -783,6 +784,7 @@ function getEmployeeForSession(store, session) {
     birthday: "",
     mobile: "",
     alternativeNumber: "",
+    aadhaar: "",
     pan: "",
     uan: "",
     experience: "",
@@ -950,6 +952,7 @@ function AddEmployeePanel({ commit }) {
     address: "",
     mobile: "",
     alternativeNumber: "",
+    aadhaar: "",
     pan: "",
     uan: "",
     experience: "",
@@ -977,6 +980,7 @@ function AddEmployeePanel({ commit }) {
       address: employee.address.trim(),
       mobile: employee.mobile.trim(),
       alternativeNumber: employee.alternativeNumber.trim(),
+      aadhaar: employee.aadhaar.trim(),
       pan: employee.pan.trim(),
       uan: employee.uan.trim(),
       experience: employee.experience.trim(),
@@ -1023,6 +1027,7 @@ function AddEmployeePanel({ commit }) {
         <label>Birthday<input placeholder="dd/mm/yyyy" value={employee.birthday} onChange={(event) => setEmployee({ ...employee, birthday: event.target.value })} /></label>
         <input placeholder="Mobile number" value={employee.mobile} onChange={(event) => setEmployee({ ...employee, mobile: event.target.value })} />
         <input placeholder="Alternative number" value={employee.alternativeNumber} onChange={(event) => setEmployee({ ...employee, alternativeNumber: event.target.value })} />
+        <input placeholder="Aadhaar number" value={employee.aadhaar} onChange={(event) => setEmployee({ ...employee, aadhaar: event.target.value })} />
         <input placeholder="PAN optional" value={employee.pan} onChange={(event) => setEmployee({ ...employee, pan: event.target.value })} />
         <input placeholder="UAN optional" value={employee.uan} onChange={(event) => setEmployee({ ...employee, uan: event.target.value })} />
         <input placeholder="Experience" value={employee.experience} onChange={(event) => setEmployee({ ...employee, experience: event.target.value })} />
@@ -1332,7 +1337,7 @@ function Metric({ label, value }) {
   return <div className="metric"><span>{label}</span><strong>{value}</strong></div>;
 }
 
-const employeeColumns = ["id", "name", "email", "accessRole", "department", "role", "salary", "joinedAt", "birthday", "mobile", "alternativeNumber", "pan", "uan", "experience", "qualification", "college", "address", "status"];
+const employeeColumns = ["id", "name", "email", "accessRole", "department", "role", "salary", "joinedAt", "birthday", "mobile", "alternativeNumber", "aadhaar", "pan", "uan", "experience", "qualification", "college", "address", "status"];
 
 function EmployeeTable({ employees, commit, canDelete = false, className = "" }) {
   const [editingEmployee, setEditingEmployee] = useState(null);
@@ -1418,6 +1423,7 @@ function EmployeeTable({ employees, commit, canDelete = false, className = "" })
             <span>birthday</span>
             <span>mobile</span>
             <span>alt number</span>
+            <span>Aadhaar</span>
             <span>PAN</span>
             <span>UAN</span>
             <span>experience</span>
@@ -1440,6 +1446,7 @@ function EmployeeTable({ employees, commit, canDelete = false, className = "" })
               <span>{employee.birthday || "--"}</span>
               <span>{employee.mobile || "--"}</span>
               <span>{employee.alternativeNumber || "--"}</span>
+              <span>{employee.aadhaar || "--"}</span>
               <span>{employee.pan || "--"}</span>
               <span>{employee.uan || "--"}</span>
               <span>{employee.experience || "--"}</span>
@@ -1491,6 +1498,7 @@ function EmployeeEditModal({ employee, onClose, onSave }) {
     birthday: employee.birthday || "",
     mobile: employee.mobile || "",
     alternativeNumber: employee.alternativeNumber || "",
+    aadhaar: employee.aadhaar || "",
     pan: employee.pan || "",
     uan: employee.uan || "",
     experience: employee.experience || "",
@@ -1523,6 +1531,7 @@ function EmployeeEditModal({ employee, onClose, onSave }) {
       birthday: form.birthday.trim(),
       mobile: form.mobile.trim(),
       alternativeNumber: form.alternativeNumber.trim(),
+      aadhaar: form.aadhaar.trim(),
       pan: form.pan.trim(),
       uan: form.uan.trim(),
       experience: form.experience.trim(),
@@ -1559,6 +1568,7 @@ function EmployeeEditModal({ employee, onClose, onSave }) {
           <label>Birthday<input placeholder="dd/mm/yyyy" value={form.birthday} onChange={(event) => updateField("birthday", event.target.value)} /></label>
           <label>Mobile<input value={form.mobile} onChange={(event) => updateField("mobile", event.target.value)} /></label>
           <label>Alternative Number<input value={form.alternativeNumber} onChange={(event) => updateField("alternativeNumber", event.target.value)} /></label>
+          <label>Aadhaar Number<input value={form.aadhaar} onChange={(event) => updateField("aadhaar", event.target.value)} /></label>
           <label>PAN<input value={form.pan} onChange={(event) => updateField("pan", event.target.value)} /></label>
           <label>UAN<input value={form.uan} onChange={(event) => updateField("uan", event.target.value)} /></label>
           <label>Experience<input value={form.experience} onChange={(event) => updateField("experience", event.target.value)} /></label>
