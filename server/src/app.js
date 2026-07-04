@@ -164,9 +164,11 @@ async function getPortalState() {
 async function syncPortalUsers(models, payload) {
   if (!models) return;
   const users = [...(payload.logins || []), ...(payload.employees || [])];
+  const activeEmails = [];
   for (const user of users) {
     const email = user.email?.trim().toLowerCase();
     if (!email) continue;
+    activeEmails.push(email);
     await models.PortalUser.updateOne(
       { email },
       {
@@ -184,6 +186,11 @@ async function syncPortalUsers(models, payload) {
       { upsert: true }
     );
   }
+  await models.PortalUser.deleteMany({
+    email: {
+      $nin: activeEmails
+    }
+  });
 }
 
 async function savePortalState(payload) {
