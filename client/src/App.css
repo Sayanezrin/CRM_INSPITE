@@ -461,6 +461,15 @@ button:disabled {
   min-width: 210px;
 }
 
+.compact-submit-button {
+  align-self: end;
+  justify-self: start;
+  width: auto;
+  min-width: 150px;
+  min-height: 46px;
+  padding: 0 18px;
+}
+
 .receipt-field {
   gap: 6px;
   color: #344154;
@@ -877,6 +886,11 @@ button:disabled {
   .expense-submit-button {
     width: 100%;
     min-width: 0;
+    justify-self: stretch;
+  }
+
+  .compact-submit-button {
+    width: 100%;
     justify-self: stretch;
   }
 

@@ -812,7 +812,7 @@ function AttendancePage({ store, commit, session }) {
 }
 
 function AdminHome({ store, commit }) {
-  const totals = getTotals(store);
+  const totals = getTotals(buildFinanceRows(store));
   return (
     <DashboardGrid>
       <Panel title="Admin Overview" className="full-row-panel">
@@ -1141,7 +1141,7 @@ function AdminExpenseFormPanel({ store, commit, createdBy = "Admin", title = "Ad
 
   return (
     <Panel title={title} className="full-row-panel">
-      <form className="form-grid" onSubmit={addExpense}>
+      <form className="form-grid admin-expense-form" onSubmit={addExpense}>
         <select value={expense.employeeId} onChange={(event) => setExpense({ ...expense, employeeId: event.target.value })}>
           <option value="company">Admin / Company Expense</option>
           {store.employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
@@ -1158,7 +1158,7 @@ function AdminExpenseFormPanel({ store, commit, createdBy = "Admin", title = "Ad
           <small>{receipt ? receipt.name : "Image or PDF, max 2 MB"}</small>
           {receiptError && <em>{receiptError}</em>}
         </label>
-        <button className="primary-button">Add Expense</button>
+        <button className="primary-button compact-submit-button">Add Expense</button>
       </form>
     </Panel>
   );
