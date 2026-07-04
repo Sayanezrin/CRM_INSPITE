@@ -179,6 +179,7 @@ function money(value) {
 
 const ledgerCsvColumns = ["id", "type", "date", "account", "category", "amount", "note", "createdBy"];
 const expenseCsvColumns = ["id", "employeeId", "employeeName", "category", "date", "amount", "notes", "status", "submittedAt", "createdBy", "receiptName"];
+const financeExportColumns = ["source", "id", "type", "date", "employeeName", "account", "category", "amount", "status", "note", "createdBy", "receiptName"];
 const TOAST_EVENT = "inspite-toast";
 
 function toast(message, type = "success") {
@@ -233,6 +234,126 @@ function downloadCsv(filename, rows, columns) {
   link.remove();
   URL.revokeObjectURL(url);
   toast("CSV export downloaded.");
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function parseRecordDate(value) {
+  if (!value) return null;
+  const raw = String(value).trim();
+  const ddmmyyyy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (ddmmyyyy) {
+    const [, day, month, year] = ddmmyyyy;
+    const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function getPeriodRange(period) {
+  const now = new Date();
+  const start = new Date(now);
+  const end = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  end.setHours(23, 59, 59, 999);
+
+  if (period === "weekly") {
+    const mondayOffset = (start.getDay() + 6) % 7;
+    start.setDate(start.getDate() - mondayOffset);
+    end.setTime(start.getTime());
+    end.setDate(start.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+  } else if (period === "monthly") {
+    start.setDate(1);
+    end.setFullYear(start.getFullYear(), start.getMonth() + 1, 0);
+  } else if (period === "yearly") {
+    start.setMonth(0, 1);
+    end.setFullYear(start.getFullYear(), 11, 31);
+  }
+
+  return { start, end };
+}
+
+function isWithinPeriod(value, period) {
+  const date = parseRecordDate(value);
+  if (!date) return false;
+  const { start, end } = getPeriodRange(period);
+  return date >= start && date <= end;
+}
+
+function buildFinanceRows(store) {
+  const ledgerRows = (store.ledger || []).map((item) => ({
+    source: "Ledger",
+    id: item.id,
+    type: item.type || "Debit",
+    date: item.date,
+    employeeName: "",
+    account: item.account,
+    category: item.category,
+    amount: Number(item.amount || 0),
+    status: "Recorded",
+    note: item.note,
+    createdBy: item.createdBy || "HR",
+    receiptName: ""
+  }));
+
+  const expenseRows = (store.expenses || []).map((item) => ({
+    source: "Expense",
+    id: item.id,
+    type: "Debit",
+    date: item.date || item.submittedAt,
+    employeeName: item.employeeName,
+    account: item.employeeId,
+    category: item.category,
+    amount: Number(item.amount || 0),
+    status: item.status,
+    note: item.notes,
+    createdBy: item.createdBy || "Employee",
+    receiptName: item.receipt?.name || ""
+  }));
+
+  return [...ledgerRows, ...expenseRows].sort((a, b) => {
+    const first = parseRecordDate(a.date)?.getTime() || 0;
+    const second = parseRecordDate(b.date)?.getTime() || 0;
+    return second - first;
+  });
+}
+
+function downloadExcelReport(filename, title, sheets) {
+  const hasRows = sheets.some((sheet) => sheet.rows.length);
+  if (!hasRows) {
+    toast("No records available for this report.", "error");
+    return;
+  }
+
+  const body = sheets.map((sheet) => `
+    <h2>${escapeHtml(sheet.title)}</h2>
+    <table>
+      <thead><tr>${sheet.columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("")}</tr></thead>
+      <tbody>
+        ${sheet.rows.map((row) => `<tr>${sheet.columns.map((column) => `<td>${escapeHtml(column === "amount" || column === "salary" ? Number(row[column] || 0) : row[column] ?? "")}</td>`).join("")}</tr>`).join("")}
+      </tbody>
+    </table>
+  `).join("");
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif}h1,h2{margin:12px 0}table{border-collapse:collapse;margin-bottom:24px}th,td{border:1px solid #b8c2cf;padding:6px 8px;white-space:nowrap}th{background:#e9eef6}</style></head><body><h1>${escapeHtml(title)}</h1>${body}</body></html>`;
+  const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  toast("Excel report downloaded.");
 }
 
 function fileToDataUrl(file) {
@@ -928,6 +1049,37 @@ function LedgerEntryPanel({ commit, className = "" }) {
 
 function AdminExpenseFormPanel({ store, commit }) {
   const [expense, setExpense] = useState({ employeeId: "company", category: "Travel", amount: "", date: "", notes: "" });
+  const [receipt, setReceipt] = useState(null);
+  const [receiptError, setReceiptError] = useState("");
+
+  const handleReceiptUpload = async (event) => {
+    const file = event.target.files?.[0];
+    setReceiptError("");
+    if (!file) {
+      setReceipt(null);
+      return;
+    }
+    const allowed = file.type.startsWith("image/") || file.type === "application/pdf";
+    if (!allowed) {
+      setReceiptError("Upload an image or PDF receipt.");
+      toast("Upload an image or PDF receipt.", "error");
+      event.target.value = "";
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setReceiptError("Receipt must be 2 MB or smaller for web storage.");
+      toast("Receipt must be 2 MB or smaller.", "error");
+      event.target.value = "";
+      return;
+    }
+    try {
+      setReceipt({ name: file.name, type: file.type, size: file.size, dataUrl: await fileToDataUrl(file) });
+      toast("Receipt uploaded.");
+    } catch {
+      setReceiptError("Could not read this receipt. Please try another file.");
+      toast("Could not read this receipt.", "error");
+    }
+  };
 
   const addExpense = (event) => {
     event.preventDefault();
@@ -946,6 +1098,7 @@ function AdminExpenseFormPanel({ store, commit }) {
         amount: Number(expense.amount),
         date: expense.date,
         notes: expense.notes.trim(),
+        receipt,
         status: "Approved",
         submittedAt: today(),
         createdBy: "Admin"
@@ -953,6 +1106,9 @@ function AdminExpenseFormPanel({ store, commit }) {
     }));
     toast("Expense added.");
     setExpense({ employeeId: "company", category: "Travel", amount: "", date: "", notes: "" });
+    setReceipt(null);
+    setReceiptError("");
+    event.currentTarget.reset();
   };
 
   return (
@@ -973,6 +1129,12 @@ function AdminExpenseFormPanel({ store, commit }) {
         <input type="number" placeholder="Amount" value={expense.amount} onChange={(event) => setExpense({ ...expense, amount: event.target.value })} />
         <input placeholder="dd/mm/yyyy" value={expense.date} onChange={(event) => setExpense({ ...expense, date: event.target.value })} />
         <input className="wide-input" placeholder="Notes" value={expense.notes} onChange={(event) => setExpense({ ...expense, notes: event.target.value })} />
+        <label className="receipt-field">
+          <span>Receipt</span>
+          <input type="file" accept="image/*,.pdf,application/pdf" onChange={handleReceiptUpload} />
+          <small>{receipt ? receipt.name : "Image or PDF, max 2 MB"}</small>
+          {receiptError && <em>{receiptError}</em>}
+        </label>
         <button className="primary-button">Add Expense</button>
       </form>
     </Panel>
@@ -1501,26 +1663,58 @@ function AttendanceTable({ attendance, title = "Attendance Records", className =
   );
 }
 
-function getTotals(store) {
-  return store.ledger.reduce((summary, item) => {
+function getTotals(rows) {
+  return rows.reduce((summary, item) => {
+    if (item.source === "Expense" && item.status !== "Approved") return summary;
     summary[item.type.toLowerCase()] += Number(item.amount);
     return summary;
   }, { credit: 0, debit: 0 });
 }
 
 function FinancePanel({ store, canExport = false, className = "" }) {
-  const totals = getTotals(store);
+  const financeRows = buildFinanceRows(store);
+  const totals = getTotals(financeRows);
+  const approvedExpenses = (store.expenses || []).filter((item) => item.status === "Approved").reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const pendingExpenses = (store.expenses || []).filter((item) => item.status === "Pending").reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
+  const downloadPeriodReport = (period) => {
+    const label = `${period.charAt(0).toUpperCase()}${period.slice(1)} Finance Report`;
+    const periodFinanceRows = financeRows.filter((row) => isWithinPeriod(row.date, period));
+    const periodExpenses = (store.expenses || []).filter((item) => isWithinPeriod(item.date || item.submittedAt, period)).map((item) => ({
+      ...item,
+      receiptName: item.receipt?.name || ""
+    }));
+    const periodLedger = (store.ledger || []).filter((item) => isWithinPeriod(item.date, period));
+    const periodLeaves = (store.leaves || []).filter((item) => isWithinPeriod(item.appliedAt || item.from, period));
+    const periodAttendance = (store.attendance || []).filter((item) => isWithinPeriod(item.date, period));
+
+    downloadExcelReport(`inspite-${period}-finance-report.xls`, label, [
+      { title: "Finance Register", columns: financeExportColumns, rows: periodFinanceRows },
+      { title: "Expenses", columns: expenseCsvColumns, rows: periodExpenses },
+      { title: "Ledger", columns: ledgerCsvColumns, rows: periodLedger },
+      { title: "Leaves", columns: ["id", "employeeName", "type", "duration", "from", "to", "reason", "status", "appliedAt"], rows: periodLeaves },
+      { title: "Attendance", columns: ["id", "employeeName", "date", "status", "checkIn", "checkOut"], rows: periodAttendance }
+    ]);
+  };
 
   return (
-    <Panel title="Credit / Debit Ledger" className={className}>
+    <Panel title="Finance Register" className={className}>
       <div className="finance-summary">
         <Metric label="Credit" value={money(totals.credit)} />
         <Metric label="Debit" value={money(totals.debit)} />
-        <Metric label="Total" value={money(totals.credit - totals.debit)} />
-        <button className="secondary-button" onClick={() => downloadCsv("credit-debit-ledger.csv", store.ledger, ledgerCsvColumns)}>Export Excel CSV</button>
+        <Metric label="Balance" value={money(totals.credit - totals.debit)} />
+        <Metric label="Approved Expenses" value={money(approvedExpenses)} />
+        <Metric label="Pending Expenses" value={money(pendingExpenses)} />
+        <Metric label="Finance Rows" value={financeRows.length} />
+      </div>
+      <div className="finance-export-actions">
+        <button className="secondary-button" onClick={() => downloadPeriodReport("weekly")}>Weekly Excel</button>
+        <button className="secondary-button" onClick={() => downloadPeriodReport("monthly")}>Monthly Excel</button>
+        <button className="secondary-button" onClick={() => downloadPeriodReport("yearly")}>Yearly Excel</button>
+        <button className="secondary-button" onClick={() => downloadCsv("credit-debit-ledger.csv", store.ledger, ledgerCsvColumns)}>Export Ledger CSV</button>
         {canExport && <button className="secondary-button" onClick={() => downloadCsv("employee-expenses.csv", store.expenses, expenseCsvColumns)}>Export Expenses CSV</button>}
       </div>
-      <DataTable rows={store.ledger} columns={["id", "type", "date", "account", "category", "amount", "note"]} />
+      <DataTable rows={financeRows} columns={financeExportColumns} />
     </Panel>
   );
 }

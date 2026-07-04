@@ -338,6 +338,16 @@ button:disabled {
   align-items: stretch;
 }
 
+.finance-export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.finance-export-actions button {
+  min-width: 150px;
+}
+
 .overview-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(130px, 1fr));
