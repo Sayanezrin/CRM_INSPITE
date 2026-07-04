@@ -3,12 +3,13 @@ import inspiteLogoImage from "./assets/inspite-logo.png";
 
 const STORAGE_KEY = "inspite.people.role.portal";
 const SESSION_KEY = "inspite.people.role.session";
+const LOCAL_PASSWORDS_KEY = "inspite.people.local.passwords";
 const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://127.0.0.1:5018" : "");
 
 const roles = {
   admin: { title: "Admin", email: "sayanezrin@gmail.com", password: "admin123" },
-  hr: { title: "HR / Accountant", email: "hr@inspite.local", password: "hr123" },
-  employee: { title: "Employee", email: "employee@inspite.local", password: "emp123" }
+  hr: { title: "HR / Accountant", email: "hr@inspite.local", password: "HR@123" },
+  employee: { title: "Employee", email: "employee@inspite.local", password: "Employee@123" }
 };
 
 const seedState = {
@@ -71,37 +72,73 @@ function writeSession(value) {
   }
 }
 
+function readLocalPasswords() {
+  try {
+    const saved = window.localStorage.getItem(LOCAL_PASSWORDS_KEY);
+    return saved ? JSON.parse(saved) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeLocalPasswords(value) {
+  try {
+    window.localStorage.setItem(LOCAL_PASSWORDS_KEY, JSON.stringify(value));
+  } catch {
+    // Local fallback passwords are best-effort only.
+  }
+}
+
 function normalizeRole(role) {
   return role?.trim().toLowerCase() === "hr / accountant" ? "hr" : role?.trim().toLowerCase() || "employee";
+}
+
+function getFirstName(name, email = "") {
+  const nameFirst = String(name || "").trim().split(/\s+/).find(Boolean);
+  const emailFirst = String(email || "").trim().split("@")[0];
+  const rawFirst = nameFirst || emailFirst || "Employee";
+  return rawFirst.charAt(0).toUpperCase() + rawFirst.slice(1).toLowerCase();
+}
+
+function initialPasswordForUser(user) {
+  return `${getFirstName(user?.name, user?.email)}@123`;
+}
+
+function localPasswordKey(email, role) {
+  return `${normalizeRole(role)}:${String(email || "").trim().toLowerCase()}`;
 }
 
 function getLocalPasswordLogin({ email, password, selectedRole, store }) {
   const normalizedEmail = email.trim().toLowerCase();
   const normalizedRole = normalizeRole(selectedRole);
-  const expectedPassword = roles[normalizedRole]?.password;
-  if (!expectedPassword || password.trim() !== expectedPassword) return null;
 
-  if (normalizedEmail === roles.admin.email && normalizedRole === "admin") {
-    return { email: normalizedEmail, name: "Saya Nezrin", role: "admin", provider: "local-password", token: `local-${Date.now()}` };
-  }
-
-  if (normalizedEmail === roles.hr.email && normalizedRole === "hr") {
-    return { email: normalizedEmail, name: roles.hr.title, role: "hr", provider: "local-password", token: `local-${Date.now()}` };
+  if (normalizedEmail === roles.admin.email) {
+    if (normalizedRole !== "admin" || password.trim() !== roles.admin.password) return null;
+    return { email: normalizedEmail, name: "Saya Nezrin", role: "admin", provider: "local-password", token: `local-${Date.now()}`, mustChangePassword: false };
   }
 
   const registeredUser = [
+    { email: roles.hr.email, name: roles.hr.title, accessRole: "hr" },
+    { email: roles.employee.email, name: roles.employee.title, accessRole: "employee" },
     ...(store.logins || []),
     ...(store.employees || [])
   ].find((user) => user.email?.trim().toLowerCase() === normalizedEmail && normalizeRole(user.accessRole) === normalizedRole);
 
-  if (!registeredUser && normalizedEmail !== roles.employee.email) return null;
+  if (!registeredUser) return null;
+  const savedPassword = readLocalPasswords()[localPasswordKey(normalizedEmail, normalizedRole)];
+  if (savedPassword) {
+    if (password.trim() !== savedPassword) return null;
+  } else if (password.trim() !== initialPasswordForUser({ ...registeredUser, email: normalizedEmail })) {
+    return null;
+  }
 
   return {
     email: normalizedEmail,
     name: registeredUser?.name || roles[normalizedRole]?.title || "Employee",
     role: normalizedRole,
     provider: "local-password",
-    token: `local-${Date.now()}`
+    token: `local-${Date.now()}`,
+    mustChangePassword: !savedPassword
   };
 }
 
@@ -230,6 +267,10 @@ function App() {
     return <LoginScreen store={store} onLogin={(nextSession) => { writeSession(nextSession); setSession(nextSession); setActivePage("home"); }} />;
   }
 
+  if (session.mustChangePassword) {
+    return <PasswordChangeScreen session={session} onChanged={(nextSession) => { writeSession(nextSession); setSession(nextSession); setActivePage("home"); }} onLogout={() => { writeSession(null); setSession(null); }} />;
+  }
+
   return (
     <div className="portal-shell">
       <Sidebar session={session} activePage={activePage} onPageChange={setActivePage} onLogout={() => { writeSession(null); setSession(null); }} />
@@ -316,9 +357,79 @@ function LoginScreen({ store, onLogin }) {
         <button className="primary-button" type="submit">Open Dashboard</button>
         <div className="credential-list">
           <span>Admin password: admin123</span>
-          <span>HR / Accountant password: hr123</span>
-          <span>Employee password: emp123</span>
+          <span>First password: FirstName@123</span>
+          <span>Example: Saya@123</span>
         </div>
+      </form>
+    </div>
+  );
+}
+
+function PasswordChangeScreen({ session, onChanged, onLogout }) {
+  const [form, setForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
+  const [error, setError] = useState("");
+
+  const submit = async (event) => {
+    event.preventDefault();
+    if (form.newPassword !== form.confirmPassword) {
+      setError("New password and confirmation must match.");
+      return;
+    }
+    if (form.newPassword.trim().length < 6) {
+      setError("New password must be at least 6 characters.");
+      return;
+    }
+    if (session.provider === "local-password") {
+      const passwordKey = localPasswordKey(session.email, session.role);
+      const savedPasswords = readLocalPasswords();
+      const currentPassword = savedPasswords[passwordKey] || initialPasswordForUser(session);
+      if (form.currentPassword.trim() !== currentPassword) {
+        setError("Current password is incorrect.");
+        return;
+      }
+      if (form.newPassword.trim() === currentPassword) {
+        setError("Choose a new password that is different from the initial password.");
+        return;
+      }
+      const nextPasswords = { ...savedPasswords, [passwordKey]: form.newPassword.trim() };
+      writeLocalPasswords(nextPasswords);
+      onChanged({ ...session, mustChangePassword: false });
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/api/auth/change-password`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.token}`
+        },
+        body: JSON.stringify({ currentPassword: form.currentPassword, newPassword: form.newPassword })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Password change failed.");
+      onChanged({ ...payload.user, token: payload.token });
+    } catch (error) {
+      setError(error.message);
+    }
+  };
+
+  return (
+    <div className="login-page password-change-page">
+      <section className="login-copy">
+        <img src={inspiteLogoImage} alt="Inspite Technologies" />
+        <h1>Set your new password</h1>
+        <p>Your first password is only for the first sign in. Create a private password before opening the dashboard.</p>
+      </section>
+      <form className="login-panel" onSubmit={submit}>
+        <h2>Password required</h2>
+        <p className="change-note">Signed in as {session.email}</p>
+        <label>Current password<input type="password" value={form.currentPassword} onChange={(event) => setForm({ ...form, currentPassword: event.target.value })} /></label>
+        <label>New password<input type="password" value={form.newPassword} onChange={(event) => setForm({ ...form, newPassword: event.target.value })} /></label>
+        <label>Confirm password<input type="password" value={form.confirmPassword} onChange={(event) => setForm({ ...form, confirmPassword: event.target.value })} /></label>
+        {error && <p className="form-error">{error}</p>}
+        <button className="primary-button" type="submit">Change Password</button>
+        <button className="secondary-button" type="button" onClick={onLogout}>Sign out</button>
       </form>
     </div>
   );

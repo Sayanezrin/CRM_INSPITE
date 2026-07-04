@@ -1,3 +1,4 @@
+import "dotenv/config";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -5,7 +6,8 @@ import { fileURLToPath } from "node:url";
 import cors from "cors";
 import express from "express";
 import { OAuth2Client } from "google-auth-library";
-import { MongoClient } from "mongodb";
+import helmet from "helmet";
+import { getModels, getModelsOrNull } from "./database.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const serverRoot = path.resolve(__dirname, "..");
@@ -14,8 +16,8 @@ const portalFilePath = path.join(appDataDir, "portal-store.json");
 
 const roles = {
   admin: { title: "Admin", email: "sayanezrin@gmail.com", password: "admin123" },
-  hr: { title: "HR / Accountant", email: "hr@inspite.local", password: "hr123" },
-  employee: { title: "Employee", email: "employee@inspite.local", password: "emp123" }
+  hr: { title: "HR / Accountant", email: "hr@inspite.local" },
+  employee: { title: "Employee", email: "employee@inspite.local" }
 };
 
 const employee = {
@@ -57,17 +59,31 @@ const lists = {
 const tokenSecret = process.env.APP_AUTH_SECRET || "local-development-token-secret-change-before-production";
 const googleClientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || "";
 const googleClient = new OAuth2Client(googleClientId || undefined);
-const mongoConnectionString = process.env.MONGODB_CONNECTION_STRING || "";
-const databaseName = process.env.MONGODB_DATABASE_NAME || "inspite_people";
-const portalCollectionName = process.env.MONGODB_PORTAL_COLLECTION || "portalState";
-
-let mongoClientPromise;
-
 function normalizeRole(role) {
   const value = String(role || "").trim().toLowerCase();
   if (value === "accountant" || value === "hr / accountant") return "hr";
   if (value === "admin" || value === "hr") return value;
   return "employee";
+}
+
+function getFirstName(name, email = "") {
+  const nameFirst = String(name || "").trim().split(/\s+/).find(Boolean);
+  const emailFirst = String(email || "").trim().split("@")[0];
+  const rawFirst = nameFirst || emailFirst || "Employee";
+  return rawFirst.charAt(0).toUpperCase() + rawFirst.slice(1).toLowerCase();
+}
+
+function initialPasswordForUser(user) {
+  return `${getFirstName(user?.name, user?.email)}@123`;
+}
+
+function hashPassword(password) {
+  return crypto.createHmac("sha256", tokenSecret).update(String(password || "")).digest("hex");
+}
+
+function verifyUserPassword(password, user) {
+  if (user?.passwordHash) return hashPassword(password) === user.passwordHash;
+  return String(password || "") === initialPasswordForUser(user);
 }
 
 function base64UrlEncode(value) {
@@ -121,13 +137,6 @@ function isAllowed(session, pathValue, method) {
   return false;
 }
 
-async function getDatabase() {
-  if (!mongoConnectionString || mongoConnectionString.includes("<db_password>")) return null;
-  mongoClientPromise ??= new MongoClient(mongoConnectionString).connect();
-  const client = await mongoClientPromise;
-  return client.db(databaseName);
-}
-
 async function readPortalFile() {
   try {
     const raw = await fs.readFile(portalFilePath, "utf8");
@@ -144,21 +153,21 @@ async function writePortalFile(payload) {
 }
 
 async function getPortalState() {
-  const db = await getDatabase();
-  if (db) {
-    const document = await db.collection(portalCollectionName).findOne({ _id: "main" });
+  const models = await getModelsOrNull();
+  if (models) {
+    const document = await models.PortalState.findOne({ _id: "main" }).lean();
     return document?.dataJson ? JSON.parse(document.dataJson) : null;
   }
   return readPortalFile();
 }
 
-async function syncPortalUsers(db, payload) {
-  if (!db) return;
+async function syncPortalUsers(models, payload) {
+  if (!models) return;
   const users = [...(payload.logins || []), ...(payload.employees || [])];
   for (const user of users) {
     const email = user.email?.trim().toLowerCase();
     if (!email) continue;
-    await db.collection("portalUsers").updateOne(
+    await models.PortalUser.updateOne(
       { email },
       {
         $set: {
@@ -167,6 +176,9 @@ async function syncPortalUsers(db, payload) {
           role: normalizeRole(user.accessRole),
           status: user.status || "Active",
           updatedAt: new Date()
+        },
+        $setOnInsert: {
+          mustChangePassword: true
         }
       },
       { upsert: true }
@@ -175,10 +187,10 @@ async function syncPortalUsers(db, payload) {
 }
 
 async function savePortalState(payload) {
-  const db = await getDatabase();
-  if (db) {
-    await syncPortalUsers(db, payload);
-    await db.collection(portalCollectionName).updateOne(
+  const models = await getModelsOrNull();
+  if (models) {
+    await syncPortalUsers(models, payload);
+    await models.PortalState.updateOne(
       { _id: "main" },
       { $set: { dataJson: JSON.stringify(payload), savedAt: new Date() } },
       { upsert: true }
@@ -193,45 +205,44 @@ function findUserInPortalPayload(payload, email) {
   const users = [...(payload?.logins || []), ...(payload?.employees || [])];
   const user = users.find((item) => item.email?.trim().toLowerCase() === email);
   if (!user) return null;
-  return { name: user.name || "", role: normalizeRole(user.accessRole) };
+  return { email, name: user.name || "", role: normalizeRole(user.accessRole), mustChangePassword: true };
 }
 
 async function findRegisteredUser(email) {
-  if (email === roles.admin.email) return { name: "Saya Nezrin", role: "admin" };
-  if (email === roles.hr.email) return { name: roles.hr.title, role: "hr" };
+  if (email === roles.admin.email) return { email, name: "Saya Nezrin", role: "admin", mustChangePassword: false };
+  if (email === roles.hr.email) return { email, name: roles.hr.title, role: "hr", mustChangePassword: true };
 
-  const db = await getDatabase();
-  if (db) {
-    const user = await db.collection("portalUsers").findOne({ email });
-    if (user) return { name: user.name || "", role: normalizeRole(user.role) };
+  const models = await getModelsOrNull();
+  if (models) {
+    const user = await models.PortalUser.findOne({ email }).lean();
+    if (user) {
+      return {
+        email,
+        name: user.name || "",
+        role: normalizeRole(user.role),
+        passwordHash: user.passwordHash || "",
+        mustChangePassword: user.mustChangePassword !== false
+      };
+    }
   }
 
   return findUserInPortalPayload(await readPortalFile(), email);
 }
 
-function passwordForRole(role) {
-  return roles[normalizeRole(role)]?.password || roles.employee.password;
-}
-
-async function getNextId(collection) {
-  const latest = await collection.find({ id: { $exists: true } }).sort({ id: -1 }).limit(1).next();
+async function getNextId(model) {
+  const latest = await model.findOne({ id: { $exists: true } }).sort({ id: -1 }).lean();
   return Number(latest?.id || 0) + 1;
 }
 
-async function getPeopleCollections() {
-  const db = await getDatabase();
-  if (!db) throw new Error("MongoDB connection string is missing. Set MONGODB_CONNECTION_STRING.");
-  return {
-    timeLogs: db.collection("timeLogs"),
-    tasks: db.collection("tasks"),
-    candidates: db.collection("Candidates"),
-    attendance: db.collection("Attendance")
-  };
+async function getPeopleModels() {
+  const models = await getModels();
+  if (!models) throw new Error("MongoDB connection string is missing. Set MONGODB_URI or MONGODB_CONNECTION_STRING.");
+  return models;
 }
 
 async function getTimeSummary() {
-  const { timeLogs } = await getPeopleCollections();
-  const logs = await timeLogs.find({}).sort({ createdAt: -1 }).toArray();
+  const { TimeLog } = await getPeopleModels();
+  const logs = await TimeLog.find({}).sort({ createdAt: -1 }).lean();
   return {
     totalHours: logs.reduce((sum, log) => sum + Number(log.hours || 0), 0),
     submittedHours: logs.filter((log) => log.submitted).reduce((sum, log) => sum + Number(log.hours || 0), 0),
@@ -250,7 +261,32 @@ const corsOrigins = (process.env.CORS_ORIGINS || "http://127.0.0.1:5174,http://l
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-app.use(cors({ origin: corsOrigins, credentials: false }));
+function isLocalDevOrigin(origin) {
+  return /^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(origin || "");
+}
+
+function isVercelOrigin(origin) {
+  try {
+    const { hostname, protocol } = new URL(origin);
+    return protocol === "https:" && hostname.endsWith(".vercel.app");
+  } catch {
+    return false;
+  }
+}
+
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || corsOrigins.includes(origin) || isLocalDevOrigin(origin) || isVercelOrigin(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error("Origin is not allowed by CORS."));
+  },
+  credentials: false
+}));
 app.use(express.json({ limit: "10mb" }));
 
 app.use((req, res, next) => {
@@ -266,7 +302,14 @@ app.use((req, res, next) => {
 });
 
 app.get("/", (_req, res) => res.json({ ok: true, service: "InspitePeople.Api.Node" }));
-app.get("/api/health", (_req, res) => res.json({ ok: true, checkedAt: new Date().toISOString() }));
+app.get("/api/health", async (_req, res) => {
+  const models = await getModelsOrNull();
+  res.json({
+    ok: true,
+    checkedAt: new Date().toISOString(),
+    storage: models ? "mongodb" : "fallback"
+  });
+});
 
 app.post("/api/auth/password", async (req, res) => {
   const email = String(req.body.email || "").trim().toLowerCase();
@@ -274,16 +317,60 @@ app.post("/api/auth/password", async (req, res) => {
   const password = String(req.body.password || "").trim();
 
   if (email === roles.admin.email && password === roles.admin.password && selectedRole === "admin") {
-    const user = { email, name: "Saya Nezrin", role: "admin", provider: "password" };
+    const user = { email, name: "Saya Nezrin", role: "admin", provider: "password", mustChangePassword: false };
     return res.json({ token: createToken(user), user });
   }
 
   const registered = await findRegisteredUser(email);
-  if (!registered || registered.role !== selectedRole || password !== passwordForRole(selectedRole)) {
+  if (!registered || registered.role !== selectedRole || !verifyUserPassword(password, registered)) {
     return res.status(401).json({ error: "Invalid password login." });
   }
 
-  const user = { email, name: registered.name, role: selectedRole, provider: "password" };
+  const user = {
+    email,
+    name: registered.name,
+    role: selectedRole,
+    provider: "password",
+    mustChangePassword: !registered.passwordHash || registered.mustChangePassword === true
+  };
+  res.json({ token: createToken(user), user });
+});
+
+app.post("/api/auth/change-password", async (req, res) => {
+  const session = validateBearerToken(req.get("authorization"));
+  if (!session) return res.status(401).json({ error: "Authentication required." });
+  if (session.role === "admin") return res.status(400).json({ error: "Admin password is managed separately." });
+
+  const currentPassword = String(req.body.currentPassword || "").trim();
+  const newPassword = String(req.body.newPassword || "").trim();
+  if (newPassword.length < 6) return res.status(400).json({ error: "New password must be at least 6 characters." });
+  if (newPassword === currentPassword) return res.status(400).json({ error: "Choose a new password that is different from the initial password." });
+
+  const models = await getModels();
+  if (!models) return res.status(503).json({ error: "MongoDB storage is required to change passwords." });
+
+  const registered = await findRegisteredUser(session.email);
+  if (!registered || registered.role !== session.role || !verifyUserPassword(currentPassword, registered)) {
+    return res.status(401).json({ error: "Current password is incorrect." });
+  }
+
+  await models.PortalUser.updateOne(
+    { email: session.email },
+    {
+      $set: {
+        email: session.email,
+        name: registered.name || session.name,
+        role: session.role,
+        passwordHash: hashPassword(newPassword),
+        mustChangePassword: false,
+        passwordChangedAt: new Date(),
+        updatedAt: new Date()
+      }
+    },
+    { upsert: true }
+  );
+
+  const user = { ...session, provider: "password", mustChangePassword: false };
   res.json({ token: createToken(user), user });
 });
 
@@ -326,9 +413,9 @@ app.get("/api/bootstrap", async (_req, res) => {
       employee,
       modules,
       lists,
-      candidates: await (await getPeopleCollections()).candidates.find({}).sort({ createdAt: -1 }).toArray(),
+      candidates: await (await getPeopleModels()).Candidate.find({}).sort({ createdAt: -1 }).lean(),
       timeSummary: await getTimeSummary(),
-      tasks: await (await getPeopleCollections()).tasks.find({}).sort({ createdAt: -1 }).toArray()
+      tasks: await (await getPeopleModels()).Task.find({}).sort({ createdAt: -1 }).lean()
     });
   } catch (error) {
     res.json({
@@ -362,9 +449,9 @@ app.get("/api/time/summary", async (_req, res, next) => {
 
 app.post("/api/time/logs", async (req, res, next) => {
   try {
-    const { timeLogs } = await getPeopleCollections();
+    const { TimeLog } = await getPeopleModels();
     const log = {
-      id: await getNextId(timeLogs),
+      id: await getNextId(TimeLog),
       project: req.body.project,
       job: req.body.job,
       notes: req.body.notes,
@@ -373,7 +460,7 @@ app.post("/api/time/logs", async (req, res, next) => {
       submitted: false,
       createdAt: new Date()
     };
-    await timeLogs.insertOne(log);
+    await TimeLog.create(log);
     res.status(201).location(`/api/time/logs/${log.id}`).json(log);
   } catch (error) {
     next(error);
@@ -382,8 +469,8 @@ app.post("/api/time/logs", async (req, res, next) => {
 
 app.get("/api/candidates", async (_req, res, next) => {
   try {
-    const { candidates } = await getPeopleCollections();
-    res.json(await candidates.find({}).sort({ createdAt: -1 }).toArray());
+    const { Candidate } = await getPeopleModels();
+    res.json(await Candidate.find({}).sort({ createdAt: -1 }).lean());
   } catch (error) {
     next(error);
   }
@@ -391,9 +478,9 @@ app.get("/api/candidates", async (_req, res, next) => {
 
 app.post("/api/candidates", async (req, res, next) => {
   try {
-    const { candidates } = await getPeopleCollections();
+    const { Candidate } = await getPeopleModels();
     const candidate = {
-      id: await getNextId(candidates),
+      id: await getNextId(Candidate),
       firstName: req.body.firstName,
       lastName: req.body.lastName,
       email: req.body.email,
@@ -407,7 +494,7 @@ app.post("/api/candidates", async (req, res, next) => {
       joiningDate: req.body.joiningDate,
       createdAt: new Date()
     };
-    await candidates.insertOne(candidate);
+    await Candidate.create(candidate);
     res.status(201).location(`/api/candidates/${candidate.id}`).json(candidate);
   } catch (error) {
     next(error);
@@ -416,8 +503,8 @@ app.post("/api/candidates", async (req, res, next) => {
 
 app.delete("/api/candidates/:id", async (req, res, next) => {
   try {
-    const { candidates } = await getPeopleCollections();
-    const result = await candidates.deleteOne({ id: Number(req.params.id) });
+    const { Candidate } = await getPeopleModels();
+    const result = await Candidate.deleteOne({ id: Number(req.params.id) });
     res.sendStatus(result.deletedCount ? 204 : 404);
   } catch (error) {
     next(error);
@@ -426,8 +513,8 @@ app.delete("/api/candidates/:id", async (req, res, next) => {
 
 app.get("/api/attendance/today", async (req, res, next) => {
   try {
-    const { attendance } = await getPeopleCollections();
-    const record = await attendance.find({ userEmail: req.query.userEmail, date: toDateString() }).sort({ id: -1 }).limit(1).next();
+    const { Attendance } = await getPeopleModels();
+    const record = await Attendance.findOne({ userEmail: req.query.userEmail, date: toDateString() }).sort({ id: -1 }).lean();
     res.json(record || null);
   } catch (error) {
     next(error);
@@ -436,8 +523,8 @@ app.get("/api/attendance/today", async (req, res, next) => {
 
 app.get("/api/attendance", async (req, res, next) => {
   try {
-    const { attendance } = await getPeopleCollections();
-    res.json(await attendance.find({ userEmail: req.query.userEmail }).sort({ date: -1, id: -1 }).toArray());
+    const { Attendance } = await getPeopleModels();
+    res.json(await Attendance.find({ userEmail: req.query.userEmail }).sort({ date: -1, id: -1 }).lean());
   } catch (error) {
     next(error);
   }
@@ -445,13 +532,13 @@ app.get("/api/attendance", async (req, res, next) => {
 
 app.post("/api/attendance/check-in", async (req, res, next) => {
   try {
-    const { attendance } = await getPeopleCollections();
+    const { Attendance } = await getPeopleModels();
     const userEmail = req.body.userEmail || "unknown@inspite.local";
     const today = toDateString();
-    const existing = await attendance.find({ userEmail, date: today }).sort({ id: -1 }).limit(1).next();
+    const existing = await Attendance.findOne({ userEmail, date: today }).sort({ id: -1 }).lean();
     if (existing && !existing.checkOutAt) return res.status(201).json(existing);
     const record = {
-      id: await getNextId(attendance),
+      id: await getNextId(Attendance),
       employeeId: Number(req.body.employeeId || 0),
       userEmail,
       userName: req.body.userName || userEmail,
@@ -461,7 +548,7 @@ app.post("/api/attendance/check-in", async (req, res, next) => {
       workedSeconds: existing?.workedSeconds || 0,
       status: "In"
     };
-    await attendance.insertOne(record);
+    await Attendance.create(record);
     res.status(201).location(`/api/attendance/${record.id}`).json(record);
   } catch (error) {
     next(error);
@@ -470,17 +557,17 @@ app.post("/api/attendance/check-in", async (req, res, next) => {
 
 app.post("/api/attendance/check-out", async (req, res, next) => {
   try {
-    const { attendance } = await getPeopleCollections();
+    const { Attendance } = await getPeopleModels();
     const today = toDateString();
-    const record = await attendance.find({ userEmail: req.body.userEmail, date: today, checkOutAt: null }).sort({ id: -1 }).limit(1).next();
+    const record = await Attendance.findOne({ userEmail: req.body.userEmail, date: today, checkOutAt: null }).sort({ id: -1 }).lean();
     if (!record) {
-      const latest = await attendance.find({ userEmail: req.body.userEmail, date: today }).sort({ id: -1 }).limit(1).next();
+      const latest = await Attendance.findOne({ userEmail: req.body.userEmail, date: today }).sort({ id: -1 }).lean();
       return latest ? res.json(latest) : res.sendStatus(404);
     }
     const checkOutAt = new Date();
     const workedSeconds = Number(record.workedSeconds || 0) + Math.max(0, Math.floor((checkOutAt - record.checkInAt) / 1000));
     const updated = { ...record, checkOutAt, workedSeconds, status: "Checked out" };
-    await attendance.replaceOne({ id: record.id }, updated);
+    await Attendance.replaceOne({ id: record.id }, updated);
     res.json(updated);
   } catch (error) {
     next(error);
@@ -489,8 +576,8 @@ app.post("/api/attendance/check-out", async (req, res, next) => {
 
 app.get("/api/tasks", async (_req, res, next) => {
   try {
-    const { tasks } = await getPeopleCollections();
-    res.json(await tasks.find({}).sort({ createdAt: -1 }).toArray());
+    const { Task } = await getPeopleModels();
+    res.json(await Task.find({}).sort({ createdAt: -1 }).lean());
   } catch (error) {
     next(error);
   }
@@ -498,15 +585,15 @@ app.get("/api/tasks", async (_req, res, next) => {
 
 app.post("/api/tasks", async (req, res, next) => {
   try {
-    const { tasks } = await getPeopleCollections();
+    const { Task } = await getPeopleModels();
     const task = {
-      id: await getNextId(tasks),
+      id: await getNextId(Task),
       title: req.body.title,
       description: req.body.description,
       status: "Open",
       createdAt: new Date()
     };
-    await tasks.insertOne(task);
+    await Task.create(task);
     res.status(201).location(`/api/tasks/${task.id}`).json(task);
   } catch (error) {
     next(error);
