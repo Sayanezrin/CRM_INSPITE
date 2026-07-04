@@ -170,6 +170,11 @@ select:focus {
   color: #1e355b;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
 .form-error {
   margin: 0;
   color: var(--red);
@@ -180,6 +185,36 @@ select:focus {
   gap: 5px;
   color: #687589;
   font-size: 12px;
+}
+
+.toast-stack {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 50;
+  display: grid;
+  gap: 10px;
+  width: min(360px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.toast-message {
+  border: 1px solid #bdd4c7;
+  border-left: 4px solid var(--green);
+  border-radius: 7px;
+  background: #f4fbf7;
+  color: #123927;
+  box-shadow: 0 14px 34px rgba(25, 36, 58, .16);
+  padding: 12px 14px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.toast-message.error {
+  border-color: #efc2c7;
+  border-left-color: var(--red);
+  background: #fff6f7;
+  color: #7b202a;
 }
 
 .change-note {
@@ -353,6 +388,40 @@ select:focus {
   font-size: 20px;
 }
 
+.employee-profile-panel {
+  align-content: start;
+}
+
+.profile-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.profile-detail {
+  min-width: 0;
+  border: 1px solid #e2eaf4;
+  border-radius: 7px;
+  background: #f9fbfe;
+  padding: 13px 14px;
+  display: grid;
+  gap: 6px;
+}
+
+.profile-detail span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.profile-detail strong {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -432,7 +501,7 @@ select:focus {
 
 .employee-records .data-head,
 .employee-records .data-row {
-  grid-template-columns: 130px 170px 230px 170px 150px 140px 120px 130px 130px 140px 150px 130px 130px 140px 170px 170px 240px 110px 90px;
+  grid-template-columns: 130px 170px 230px 170px 150px 140px 120px 130px 130px 140px 150px 130px 130px 140px 170px 170px 240px 110px 104px;
 }
 
 .login-records .data-head,
@@ -469,6 +538,12 @@ select:focus {
   border-radius: 6px;
   padding: 0 10px;
   font-weight: 700;
+}
+
+.employee-action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .icon-action {
@@ -567,6 +642,22 @@ select:focus {
   overflow: hidden;
 }
 
+.employee-edit-modal {
+  width: min(1040px, 100%);
+  overflow-y: auto;
+}
+
+.employee-edit-form {
+  padding: 18px;
+}
+
+.modal-form-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .receipt-modal header {
   display: flex;
   justify-content: space-between;
@@ -641,6 +732,7 @@ select:focus {
   .finance-summary { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .employee-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .profile-detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .wide-input { grid-column: span 2; }
 }
 
@@ -762,6 +854,10 @@ select:focus {
     grid-template-columns: 1fr;
   }
 
+  .profile-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
   .wide-input,
   .expense-submit-button {
     grid-column: span 1;
@@ -798,6 +894,14 @@ select:focus {
 
   .receipt-modal {
     max-height: calc(100dvh - 20px);
+  }
+
+  .modal-form-actions {
+    flex-direction: column-reverse;
+  }
+
+  .modal-form-actions button {
+    width: 100%;
   }
 
   .receipt-modal header {

@@ -179,10 +179,42 @@ function money(value) {
 
 const ledgerCsvColumns = ["id", "type", "date", "account", "category", "amount", "note", "createdBy"];
 const expenseCsvColumns = ["id", "employeeId", "employeeName", "category", "date", "amount", "notes", "status", "submittedAt", "createdBy", "receiptName"];
+const TOAST_EVENT = "inspite-toast";
+
+function toast(message, type = "success") {
+  window.dispatchEvent(new CustomEvent(TOAST_EVENT, { detail: { id: uid("TOAST"), message, type } }));
+}
+
+function ToastHost() {
+  const [items, setItems] = useState([]);
+
+  useEffect(() => {
+    const onToast = (event) => {
+      const item = event.detail;
+      setItems((current) => [...current, item]);
+      window.setTimeout(() => {
+        setItems((current) => current.filter((toastItem) => toastItem.id !== item.id));
+      }, 3200);
+    };
+    window.addEventListener(TOAST_EVENT, onToast);
+    return () => window.removeEventListener(TOAST_EVENT, onToast);
+  }, []);
+
+  return (
+    <div className="toast-stack" role="status" aria-live="polite">
+      {items.map((item) => (
+        <div className={`toast-message ${item.type}`} key={item.id}>{item.message}</div>
+      ))}
+    </div>
+  );
+}
 
 function downloadCsv(filename, rows, columns) {
   const headers = columns || Object.keys(rows[0] || {});
-  if (!headers.length) return;
+  if (!headers.length) {
+    toast("No records available to export.", "error");
+    return;
+  }
   const exportRows = rows.map((row) => ({
     ...row,
     receiptName: row.receipt?.name || ""
@@ -200,6 +232,7 @@ function downloadCsv(filename, rows, columns) {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+  toast("CSV export downloaded.");
 }
 
 function fileToDataUrl(file) {
@@ -217,27 +250,30 @@ function App() {
   const [activePage, setActivePage] = useState("home");
   const [apiConnected, setApiConnected] = useState(false);
 
+  const refreshPortalState = () => apiJson("/api/portal")
+    .then((payload) => {
+      setApiConnected(true);
+      if (!hasPortalData(payload)) return null;
+      const nextPayload = { ...seedState, ...payload, logins: payload.logins || [] };
+      setStore(nextPayload);
+      writeState(nextPayload);
+      return nextPayload;
+    })
+    .catch(() => {
+      setApiConnected(false);
+      return null;
+    });
+
   useEffect(() => {
     if (!session?.token) return;
     let cancelled = false;
     let retryTimer;
 
     const loadPortal = () => {
-      apiJson("/api/portal")
+      refreshPortalState()
         .then((payload) => {
           if (cancelled) return;
-          setApiConnected(true);
-          if (hasPortalData(payload)) {
-            const nextPayload = { ...seedState, ...payload, logins: payload.logins || [] };
-            setStore(nextPayload);
-            writeState(nextPayload);
-            return;
-          }
-          savePortalState(readState());
-        })
-        .catch(() => {
-          if (cancelled) return;
-          setApiConnected(false);
+          if (payload) return;
           retryTimer = window.setTimeout(loadPortal, 3000);
         });
     };
@@ -258,17 +294,19 @@ function App() {
   const commit = (updater) => {
     setStore((current) => {
       const next = typeof updater === "function" ? updater(current) : updater;
-      savePortalState(next);
+      savePortalState(next).then(() => {
+        window.setTimeout(refreshPortalState, 250);
+      });
       return next;
     });
   };
 
   if (!session) {
-    return <LoginScreen store={store} onLogin={(nextSession) => { writeSession(nextSession); setSession(nextSession); setActivePage("home"); }} />;
+    return <><LoginScreen store={store} onLogin={(nextSession) => { writeSession(nextSession); setSession(nextSession); setActivePage("home"); }} /><ToastHost /></>;
   }
 
   if (session.mustChangePassword) {
-    return <PasswordChangeScreen session={session} onChanged={(nextSession) => { writeSession(nextSession); setSession(nextSession); setActivePage("home"); }} onLogout={() => { writeSession(null); setSession(null); }} />;
+    return <><PasswordChangeScreen session={session} onChanged={(nextSession) => { writeSession(nextSession); setSession(nextSession); setActivePage("home"); }} onLogout={() => { writeSession(null); setSession(null); }} /><ToastHost /></>;
   }
 
   return (
@@ -278,19 +316,20 @@ function App() {
         <Header session={session} store={store} activePage={activePage} apiConnected={apiConnected} />
         <RolePage session={session} activePage={activePage} store={store} commit={commit} />
       </main>
+      <ToastHost />
     </div>
   );
 }
 
 function LoginScreen({ store, onLogin }) {
   const [selectedRole, setSelectedRole] = useState("admin");
-  const [form, setForm] = useState({ email: roles.admin.email, password: roles.admin.password });
+  const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
   const selectRole = (role) => {
     setSelectedRole(role);
-    setForm({ email: roles[role].email, password: roles[role].password });
+    setForm({ email: "", password: "" });
     setError("");
   };
 
@@ -301,10 +340,12 @@ function LoginScreen({ store, onLogin }) {
         method: "POST",
         body: JSON.stringify({ email: form.email, password: form.password, selectedRole })
       });
+      toast("Signed in successfully.");
       onLogin({ ...login.user, token: login.token });
     } catch (error) {
       const localLogin = getLocalPasswordLogin({ ...form, selectedRole, store });
       if (localLogin) {
+        toast("Signed in with local fallback storage.");
         onLogin(localLogin);
         return;
       }
@@ -356,9 +397,8 @@ function LoginScreen({ store, onLogin }) {
         {error && <p className="form-error">{error}</p>}
         <button className="primary-button" type="submit">Open Dashboard</button>
         <div className="credential-list">
-          <span>Admin password: admin123</span>
           <span>First password: FirstName@123</span>
-          <span>Example: Saya@123</span>
+          <span>Use the email assigned by Admin.</span>
         </div>
       </form>
     </div>
@@ -373,10 +413,12 @@ function PasswordChangeScreen({ session, onChanged, onLogout }) {
     event.preventDefault();
     if (form.newPassword !== form.confirmPassword) {
       setError("New password and confirmation must match.");
+      toast("New password and confirmation must match.", "error");
       return;
     }
     if (form.newPassword.trim().length < 6) {
       setError("New password must be at least 6 characters.");
+      toast("New password must be at least 6 characters.", "error");
       return;
     }
     if (session.provider === "local-password") {
@@ -385,14 +427,17 @@ function PasswordChangeScreen({ session, onChanged, onLogout }) {
       const currentPassword = savedPasswords[passwordKey] || initialPasswordForUser(session);
       if (form.currentPassword.trim() !== currentPassword) {
         setError("Current password is incorrect.");
+        toast("Current password is incorrect.", "error");
         return;
       }
       if (form.newPassword.trim() === currentPassword) {
         setError("Choose a new password that is different from the initial password.");
+        toast("Choose a different new password.", "error");
         return;
       }
       const nextPasswords = { ...savedPasswords, [passwordKey]: form.newPassword.trim() };
       writeLocalPasswords(nextPasswords);
+      toast("Password changed successfully.");
       onChanged({ ...session, mustChangePassword: false });
       return;
     }
@@ -408,9 +453,11 @@ function PasswordChangeScreen({ session, onChanged, onLogout }) {
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "Password change failed.");
+      toast("Password changed successfully.");
       onChanged({ ...payload.user, token: payload.token });
     } catch (error) {
       setError(error.message);
+      toast(error.message, "error");
     }
   };
 
@@ -522,11 +569,47 @@ function HrPage({ activePage, store, commit, session }) {
 function EmployeePage({ activePage, store, commit, session }) {
   const currentEmployee = getEmployeeForSession(store, session);
   if (!currentEmployee) return <EmployeeProfileMissing session={session} />;
-  if (activePage === "employees") return <DashboardGrid><Panel title="My Profile"><DataTable rows={[currentEmployee]} columns={employeeColumns} /></Panel></DashboardGrid>;
+  if (activePage === "employees") return <DashboardGrid><EmployeeProfilePanel employee={currentEmployee} /></DashboardGrid>;
   if (activePage === "leave") return <DashboardGrid><LeaveFormPanel store={store} commit={commit} currentEmployee={currentEmployee} /><LeaveTable leaves={store.leaves.filter((item) => item.employeeId === currentEmployee.id)} /></DashboardGrid>;
   if (activePage === "expenses") return <DashboardGrid><ExpenseFormPanel store={store} commit={commit} currentEmployee={currentEmployee} /><ExpenseTable expenses={store.expenses.filter((item) => item.employeeId === currentEmployee.id)} /></DashboardGrid>;
   if (activePage === "attendance") return <DashboardGrid><EmployeeAttendancePanel store={store} commit={commit} currentEmployee={currentEmployee} /></DashboardGrid>;
   return <EmployeeHome store={store} commit={commit} currentEmployee={currentEmployee} />;
+}
+
+function EmployeeProfilePanel({ employee }) {
+  const fields = [
+    ["Employee ID", employee.id],
+    ["Name", employee.name],
+    ["Email", employee.email],
+    ["Dashboard Access", roles[employee.accessRole]?.title || employee.accessRole || "Employee"],
+    ["Department", employee.department],
+    ["Role", employee.role],
+    ["Salary", money(employee.salary)],
+    ["Date of Joining", employee.joinedAt],
+    ["Birthday", employee.birthday],
+    ["Mobile", employee.mobile],
+    ["Alternative Number", employee.alternativeNumber],
+    ["PAN", employee.pan],
+    ["UAN", employee.uan],
+    ["Experience", employee.experience],
+    ["Qualification", employee.qualification],
+    ["College", employee.college],
+    ["Address", employee.address],
+    ["Status", employee.status]
+  ];
+
+  return (
+    <Panel title="My Profile" className="full-row-panel employee-profile-panel">
+      <div className="profile-detail-grid">
+        {fields.map(([label, value]) => (
+          <div className="profile-detail" key={label}>
+            <span>{label}</span>
+            <strong>{value || "--"}</strong>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
 }
 
 function EmployeeProfileMissing({ session }) {
@@ -631,7 +714,10 @@ function AddLoginPanel({ commit }) {
 
   const addLogin = (event) => {
     event.preventDefault();
-    if (!login.name.trim() || !login.email.trim()) return;
+    if (!login.name.trim() || !login.email.trim()) {
+      toast("Enter name and email before adding login.", "error");
+      return;
+    }
     commit((current) => ({
       ...current,
       logins: [
@@ -645,6 +731,7 @@ function AddLoginPanel({ commit }) {
         ...(current.logins || [])
       ]
     }));
+    toast("Login access added.");
     setLogin(blankLogin);
   };
 
@@ -670,6 +757,7 @@ function LoginAccessTable({ logins, commit, className = "" }) {
       ...current,
       logins: (current.logins || []).filter((login) => login.id !== loginId)
     }));
+    toast("Login access deleted.");
   };
 
   if (!logins.length) return <Panel title="Login Access" className={className}><p className="empty-note">No login access added yet.</p></Panel>;
@@ -716,7 +804,7 @@ function AddEmployeePanel({ commit }) {
     department: "",
     role: "",
     salary: "",
-    joinedAt: today(),
+    joinedAt: "",
     birthday: "",
     address: "",
     mobile: "",
@@ -731,33 +819,49 @@ function AddEmployeePanel({ commit }) {
 
   const addEmployee = (event) => {
     event.preventDefault();
-    if (!employee.name.trim() || !employee.email.trim()) return;
+    if (!employee.name.trim() || !employee.email.trim()) {
+      toast("Enter employee name and email.", "error");
+      return;
+    }
+    const nextEmployee = {
+      id: uid("EMP"),
+      name: employee.name.trim(),
+      email: employee.email.trim().toLowerCase(),
+      accessRole: employee.accessRole,
+      department: employee.department || "General",
+      role: employee.role || "Employee",
+      salary: Number(employee.salary || 0),
+      joinedAt: employee.joinedAt,
+      birthday: employee.birthday,
+      address: employee.address.trim(),
+      mobile: employee.mobile.trim(),
+      alternativeNumber: employee.alternativeNumber.trim(),
+      pan: employee.pan.trim(),
+      uan: employee.uan.trim(),
+      experience: employee.experience.trim(),
+      qualification: employee.qualification.trim(),
+      college: employee.college.trim(),
+      status: "Active"
+    };
     commit((current) => ({
       ...current,
       employees: [
+        nextEmployee,
+        ...(current.employees || [])
+      ],
+      logins: [
         {
-          id: uid("EMP"),
-          name: employee.name.trim(),
-          email: employee.email.trim(),
-          accessRole: employee.accessRole,
-          department: employee.department || "General",
-          role: employee.role || "Employee",
-          salary: Number(employee.salary || 0),
-          joinedAt: employee.joinedAt,
-          birthday: employee.birthday,
-          address: employee.address.trim(),
-          mobile: employee.mobile.trim(),
-          alternativeNumber: employee.alternativeNumber.trim(),
-          pan: employee.pan.trim(),
-          uan: employee.uan.trim(),
-          experience: employee.experience.trim(),
-          qualification: employee.qualification.trim(),
-          college: employee.college.trim(),
+          id: uid("LOGIN"),
+          name: nextEmployee.name,
+          email: nextEmployee.email,
+          accessRole: nextEmployee.accessRole,
+          employeeId: nextEmployee.id,
           status: "Active"
         },
-        ...current.employees
+        ...(current.logins || []).filter((login) => login.email?.toLowerCase() !== nextEmployee.email)
       ]
     }));
+    toast("Employee added to directory.");
     setEmployee(blankEmployee);
   };
 
@@ -774,8 +878,8 @@ function AddEmployeePanel({ commit }) {
         <input placeholder="Department" value={employee.department} onChange={(event) => setEmployee({ ...employee, department: event.target.value })} />
         <input placeholder="Role" value={employee.role} onChange={(event) => setEmployee({ ...employee, role: event.target.value })} />
         <input type="number" placeholder="Salary" value={employee.salary} onChange={(event) => setEmployee({ ...employee, salary: event.target.value })} />
-        <label>Date of joining<input type="date" value={employee.joinedAt} onChange={(event) => setEmployee({ ...employee, joinedAt: event.target.value })} /></label>
-        <label>Birthday<input type="date" value={employee.birthday} onChange={(event) => setEmployee({ ...employee, birthday: event.target.value })} /></label>
+        <label>Date of joining<input placeholder="dd/mm/yyyy" value={employee.joinedAt} onChange={(event) => setEmployee({ ...employee, joinedAt: event.target.value })} /></label>
+        <label>Birthday<input placeholder="dd/mm/yyyy" value={employee.birthday} onChange={(event) => setEmployee({ ...employee, birthday: event.target.value })} /></label>
         <input placeholder="Mobile number" value={employee.mobile} onChange={(event) => setEmployee({ ...employee, mobile: event.target.value })} />
         <input placeholder="Alternative number" value={employee.alternativeNumber} onChange={(event) => setEmployee({ ...employee, alternativeNumber: event.target.value })} />
         <input placeholder="PAN optional" value={employee.pan} onChange={(event) => setEmployee({ ...employee, pan: event.target.value })} />
@@ -791,16 +895,20 @@ function AddEmployeePanel({ commit }) {
 }
 
 function LedgerEntryPanel({ commit, className = "" }) {
-  const [entry, setEntry] = useState({ type: "Credit", amount: "", account: "", category: "", note: "", date: today() });
+  const [entry, setEntry] = useState({ type: "Credit", amount: "", account: "", category: "", note: "", date: "" });
 
   const addLedger = (event) => {
     event.preventDefault();
-    if (!entry.amount || !entry.account.trim()) return;
+    if (!entry.amount || !entry.account.trim()) {
+      toast("Enter amount and account before saving ledger.", "error");
+      return;
+    }
     commit((current) => ({
       ...current,
       ledger: [{ id: uid("TXN"), ...entry, amount: Number(entry.amount), createdBy: "HR" }, ...current.ledger]
     }));
-    setEntry({ type: "Credit", amount: "", account: "", category: "", note: "", date: today() });
+    toast("Ledger entry saved.");
+    setEntry({ type: "Credit", amount: "", account: "", category: "", note: "", date: "" });
   };
 
   return (
@@ -810,7 +918,7 @@ function LedgerEntryPanel({ commit, className = "" }) {
         <input type="number" placeholder="Amount" value={entry.amount} onChange={(event) => setEntry({ ...entry, amount: event.target.value })} />
         <input placeholder="Account" value={entry.account} onChange={(event) => setEntry({ ...entry, account: event.target.value })} />
         <input placeholder="Category" value={entry.category} onChange={(event) => setEntry({ ...entry, category: event.target.value })} />
-        <input type="date" value={entry.date} onChange={(event) => setEntry({ ...entry, date: event.target.value })} />
+        <input placeholder="dd/mm/yyyy" value={entry.date} onChange={(event) => setEntry({ ...entry, date: event.target.value })} />
         <input placeholder="Note" value={entry.note} onChange={(event) => setEntry({ ...entry, note: event.target.value })} />
         <button className="primary-button">Save to Ledger</button>
       </form>
@@ -819,11 +927,14 @@ function LedgerEntryPanel({ commit, className = "" }) {
 }
 
 function AdminExpenseFormPanel({ store, commit }) {
-  const [expense, setExpense] = useState({ employeeId: "company", category: "Travel", amount: "", date: today(), notes: "" });
+  const [expense, setExpense] = useState({ employeeId: "company", category: "Travel", amount: "", date: "", notes: "" });
 
   const addExpense = (event) => {
     event.preventDefault();
-    if (!expense.amount) return;
+    if (!expense.amount) {
+      toast("Enter expense amount before adding.", "error");
+      return;
+    }
     const selectedEmployee = store.employees.find((employee) => employee.id === expense.employeeId);
     commit((current) => ({
       ...current,
@@ -840,7 +951,8 @@ function AdminExpenseFormPanel({ store, commit }) {
         createdBy: "Admin"
       }, ...current.expenses]
     }));
-    setExpense({ employeeId: "company", category: "Travel", amount: "", date: today(), notes: "" });
+    toast("Expense added.");
+    setExpense({ employeeId: "company", category: "Travel", amount: "", date: "", notes: "" });
   };
 
   return (
@@ -859,7 +971,7 @@ function AdminExpenseFormPanel({ store, commit }) {
           <option>Other</option>
         </select>
         <input type="number" placeholder="Amount" value={expense.amount} onChange={(event) => setExpense({ ...expense, amount: event.target.value })} />
-        <input type="date" value={expense.date} onChange={(event) => setExpense({ ...expense, date: event.target.value })} />
+        <input placeholder="dd/mm/yyyy" value={expense.date} onChange={(event) => setExpense({ ...expense, date: event.target.value })} />
         <input className="wide-input" placeholder="Notes" value={expense.notes} onChange={(event) => setExpense({ ...expense, notes: event.target.value })} />
         <button className="primary-button">Add Expense</button>
       </form>
@@ -868,10 +980,15 @@ function AdminExpenseFormPanel({ store, commit }) {
 }
 
 function EmployeeAttendancePanel({ store, commit, currentEmployee }) {
+  const employeeAttendance = store.attendance.filter((item) => item.employeeId === currentEmployee.id);
+  const activeAttendance = employeeAttendance.find((item) => item.date === today() && item.status !== "Checked Out" && !item.checkOut);
+  const checkInDisabled = Boolean(activeAttendance);
+  const checkOutDisabled = !activeAttendance;
+
   const markAttendance = (status) => {
-    const existingIndex = store.attendance.findIndex((item) => item.employeeId === currentEmployee.id && item.date === today());
+    if (checkInDisabled) return;
     const record = {
-      id: existingIndex >= 0 ? store.attendance[existingIndex].id : uid("ATT"),
+      id: uid("ATT"),
       employeeId: currentEmployee.id,
       employeeName: currentEmployee.name,
       date: today(),
@@ -881,30 +998,18 @@ function EmployeeAttendancePanel({ store, commit, currentEmployee }) {
     };
     commit((current) => {
       const attendance = [...current.attendance];
-      if (existingIndex >= 0) attendance[existingIndex] = record;
-      else attendance.unshift(record);
+      attendance.unshift(record);
       return { ...current, attendance };
     });
+    toast(status === "Work From Home" ? "Work from home marked." : "Check-in marked.");
   };
 
   const checkoutAttendance = () => {
+    if (checkOutDisabled) return;
     const now = new Date().toTimeString().slice(0, 5);
     commit((current) => {
-      const existingIndex = current.attendance.findIndex((item) => item.employeeId === currentEmployee.id && item.date === today());
-      if (existingIndex < 0) {
-        return {
-          ...current,
-          attendance: [{
-            id: uid("ATT"),
-            employeeId: currentEmployee.id,
-            employeeName: currentEmployee.name,
-            date: today(),
-            status: "Checked Out",
-            checkIn: "",
-            checkOut: now
-          }, ...current.attendance]
-        };
-      }
+      const existingIndex = current.attendance.findIndex((item) => item.id === activeAttendance.id);
+      if (existingIndex < 0) return current;
       const attendance = [...current.attendance];
       attendance[existingIndex] = {
         ...attendance[existingIndex],
@@ -913,39 +1018,45 @@ function EmployeeAttendancePanel({ store, commit, currentEmployee }) {
       };
       return { ...current, attendance };
     });
+    toast("Check-out marked.");
   };
 
   return (
     <Panel title="Today Attendance">
       <div className="attendance-actions">
-        <button className="primary-button" onClick={() => markAttendance("Checked In")}>Check In</button>
-        <button className="secondary-button" onClick={() => markAttendance("Work From Home")}>Work From Home</button>
-        <button className="secondary-button checkout-button" onClick={checkoutAttendance}>Check Out</button>
+        <button className="primary-button" onClick={() => markAttendance("Checked In")} disabled={checkInDisabled}>Check In</button>
+        <button className="secondary-button" onClick={() => markAttendance("Work From Home")} disabled={checkInDisabled}>Work From Home</button>
+        <button className="secondary-button checkout-button" onClick={checkoutAttendance} disabled={checkOutDisabled}>Check Out</button>
       </div>
-      <DataTable rows={store.attendance.filter((item) => item.employeeId === currentEmployee.id)} columns={["date", "status", "checkIn", "checkOut"]} />
+      <DataTable rows={employeeAttendance} columns={["date", "status", "checkIn", "checkOut"]} />
     </Panel>
   );
 }
 
 function LeaveFormPanel({ commit, currentEmployee }) {
-  const [leave, setLeave] = useState({ type: "Casual Leave", from: today(), to: today(), reason: "" });
+  const [leave, setLeave] = useState({ type: "Casual Leave", duration: "Full Day Leave", from: "", to: "", reason: "" });
 
   const applyLeave = (event) => {
     event.preventDefault();
-    if (!leave.reason.trim()) return;
+    if (!leave.reason.trim()) {
+      toast("Enter a leave reason before applying.", "error");
+      return;
+    }
     commit((current) => ({
       ...current,
       leaves: [{ id: uid("LV"), employeeId: currentEmployee.id, employeeName: currentEmployee.name, ...leave, status: "Pending", appliedAt: today() }, ...current.leaves]
     }));
-    setLeave({ type: "Casual Leave", from: today(), to: today(), reason: "" });
+    toast("Leave application submitted.");
+    setLeave({ type: "Casual Leave", duration: "Full Day Leave", from: "", to: "", reason: "" });
   };
 
   return (
     <Panel title="Apply Leave" className="full-row-panel">
       <form className="form-grid" onSubmit={applyLeave}>
         <select value={leave.type} onChange={(event) => setLeave({ ...leave, type: event.target.value })}><option>Casual Leave</option><option>Sick Leave</option><option>Earned Leave</option></select>
-        <input type="date" value={leave.from} onChange={(event) => setLeave({ ...leave, from: event.target.value })} />
-        <input type="date" value={leave.to} onChange={(event) => setLeave({ ...leave, to: event.target.value })} />
+        <select value={leave.duration} onChange={(event) => setLeave({ ...leave, duration: event.target.value })}><option>Full Day Leave</option><option>Half Day Leave</option></select>
+        <input placeholder="dd/mm/yyyy" value={leave.from} onChange={(event) => setLeave({ ...leave, from: event.target.value })} />
+        <input placeholder="dd/mm/yyyy" value={leave.to} onChange={(event) => setLeave({ ...leave, to: event.target.value })} />
         <input placeholder="Reason" value={leave.reason} onChange={(event) => setLeave({ ...leave, reason: event.target.value })} />
         <button className="primary-button">Apply Leave</button>
       </form>
@@ -954,7 +1065,7 @@ function LeaveFormPanel({ commit, currentEmployee }) {
 }
 
 function ExpenseFormPanel({ commit, currentEmployee }) {
-  const [expense, setExpense] = useState({ category: "Uber", amount: "", date: today(), notes: "" });
+  const [expense, setExpense] = useState({ category: "Uber", amount: "", date: "", notes: "" });
   const [receipt, setReceipt] = useState(null);
   const [receiptError, setReceiptError] = useState("");
 
@@ -966,18 +1077,22 @@ function ExpenseFormPanel({ commit, currentEmployee }) {
     const allowed = file.type.startsWith("image/") || file.type === "application/pdf";
     if (!allowed) {
       setReceiptError("Upload an image or PDF receipt.");
+      toast("Upload an image or PDF receipt.", "error");
       event.target.value = "";
       return;
     }
     if (file.size > 2 * 1024 * 1024) {
       setReceiptError("Receipt must be 2 MB or smaller for web storage.");
+      toast("Receipt must be 2 MB or smaller.", "error");
       event.target.value = "";
       return;
     }
     try {
       setReceipt({ name: file.name, type: file.type, size: file.size, dataUrl: await fileToDataUrl(file) });
+      toast("Receipt uploaded.");
     } catch {
       setReceiptError("Could not read this receipt. Please try another file.");
+      toast("Could not read this receipt.", "error");
     }
   };
 
@@ -985,13 +1100,15 @@ function ExpenseFormPanel({ commit, currentEmployee }) {
     event.preventDefault();
     if (!expense.amount || !receipt) {
       if (!receipt) setReceiptError("Add the receipt before submitting the expense.");
+      toast(!expense.amount ? "Enter expense amount before submitting." : "Add the receipt before submitting.", "error");
       return;
     }
     commit((current) => ({
       ...current,
       expenses: [{ id: uid("EXP"), employeeId: currentEmployee.id, employeeName: currentEmployee.name, ...expense, amount: Number(expense.amount), receipt, status: "Pending", submittedAt: today() }, ...current.expenses]
     }));
-    setExpense({ category: "Uber", amount: "", date: today(), notes: "" });
+    toast("Expense submitted for approval.");
+    setExpense({ category: "Uber", amount: "", date: "", notes: "" });
     setReceipt(null);
     setReceiptError("");
     event.currentTarget.reset();
@@ -1004,7 +1121,7 @@ function ExpenseFormPanel({ commit, currentEmployee }) {
           <option>Uber</option><option>Travel</option><option>Food</option><option>Hotel</option><option>Internet</option><option>Other</option>
         </select>
         <input type="number" placeholder="Amount" value={expense.amount} onChange={(event) => setExpense({ ...expense, amount: event.target.value })} />
-        <input type="date" value={expense.date} onChange={(event) => setExpense({ ...expense, date: event.target.value })} />
+        <input placeholder="dd/mm/yyyy" value={expense.date} onChange={(event) => setExpense({ ...expense, date: event.target.value })} />
         <input placeholder="Notes" value={expense.notes} onChange={(event) => setExpense({ ...expense, notes: event.target.value })} />
         <label className="receipt-field">
           <span>Receipt</span>
@@ -1038,15 +1155,63 @@ function Metric({ label, value }) {
 const employeeColumns = ["id", "name", "email", "accessRole", "department", "role", "salary", "joinedAt", "birthday", "mobile", "alternativeNumber", "pan", "uan", "experience", "qualification", "college", "address", "status"];
 
 function EmployeeTable({ employees, commit, canDelete = false, className = "" }) {
+  const [editingEmployee, setEditingEmployee] = useState(null);
+
   const deleteEmployee = (employeeId) => {
     if (!canDelete || !commit) return;
+    const employeeToDelete = employees.find((employee) => employee.id === employeeId);
+    const employeeEmail = employeeToDelete?.email?.toLowerCase();
     commit((current) => ({
       ...current,
       employees: current.employees.filter((employee) => employee.id !== employeeId),
       leaves: current.leaves.filter((leave) => leave.employeeId !== employeeId),
       expenses: current.expenses.filter((expense) => expense.employeeId !== employeeId),
-      attendance: current.attendance.filter((record) => record.employeeId !== employeeId)
+      attendance: current.attendance.filter((record) => record.employeeId !== employeeId),
+      logins: (current.logins || []).filter((login) => login.employeeId !== employeeId && login.email?.toLowerCase() !== employeeEmail)
     }));
+    toast("Employee deleted.");
+  };
+
+  const updateEmployee = (updatedEmployee) => {
+    if (!canDelete || !commit || !editingEmployee) return;
+    const previousEmail = editingEmployee.email?.toLowerCase();
+    const nextEmail = updatedEmployee.email?.toLowerCase();
+
+    commit((current) => {
+      const existingLogin = (current.logins || []).find((login) => (
+        login.employeeId === updatedEmployee.id ||
+        login.email?.toLowerCase() === previousEmail ||
+        login.email?.toLowerCase() === nextEmail
+      ));
+
+      const syncedLogin = {
+        id: existingLogin?.id || uid("LOGIN"),
+        name: updatedEmployee.name,
+        email: updatedEmployee.email,
+        accessRole: updatedEmployee.accessRole,
+        employeeId: updatedEmployee.id,
+        status: updatedEmployee.status || existingLogin?.status || "Active"
+      };
+
+      return {
+        ...current,
+        employees: (current.employees || []).map((employee) => (
+          employee.id === updatedEmployee.id ? updatedEmployee : employee
+        )),
+        logins: [
+          syncedLogin,
+          ...(current.logins || []).filter((login) => (
+            login.id !== existingLogin?.id &&
+            login.employeeId !== updatedEmployee.id &&
+            login.email?.toLowerCase() !== previousEmail &&
+            login.email?.toLowerCase() !== nextEmail
+          ))
+        ]
+      };
+    });
+
+    setEditingEmployee(null);
+    toast("Employee profile updated.");
   };
 
   if (!canDelete) {
@@ -1102,7 +1267,13 @@ function EmployeeTable({ employees, commit, canDelete = false, className = "" })
               <span>{employee.college || "--"}</span>
               <span>{employee.address || "--"}</span>
               <span>{employee.status}</span>
-              <span>
+              <span className="employee-action-buttons">
+                <button className="icon-action" type="button" aria-label={`Edit ${employee.name}`} title="Edit employee" onClick={() => setEditingEmployee(employee)}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                  </svg>
+                </button>
                 <button className="icon-action danger" type="button" aria-label={`Delete ${employee.name}`} title="Delete employee" onClick={() => deleteEmployee(employee.id)}>
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M4 7h16" />
@@ -1117,7 +1288,111 @@ function EmployeeTable({ employees, commit, canDelete = false, className = "" })
           ))}
         </div>
       ) : <p className="empty-note">No employees yet.</p>}
+      {editingEmployee ? (
+        <EmployeeEditModal
+          employee={editingEmployee}
+          onClose={() => setEditingEmployee(null)}
+          onSave={updateEmployee}
+        />
+      ) : null}
     </Panel>
+  );
+}
+
+function EmployeeEditModal({ employee, onClose, onSave }) {
+  const [form, setForm] = useState({
+    name: employee.name || "",
+    email: employee.email || "",
+    accessRole: employee.accessRole || "employee",
+    department: employee.department || "",
+    role: employee.role || "",
+    salary: employee.salary ?? "",
+    joinedAt: employee.joinedAt || "",
+    birthday: employee.birthday || "",
+    mobile: employee.mobile || "",
+    alternativeNumber: employee.alternativeNumber || "",
+    pan: employee.pan || "",
+    uan: employee.uan || "",
+    experience: employee.experience || "",
+    qualification: employee.qualification || "",
+    college: employee.college || "",
+    address: employee.address || "",
+    status: employee.status || "Active"
+  });
+
+  const updateField = (field, value) => {
+    setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const submitEdit = (event) => {
+    event.preventDefault();
+    if (!form.name.trim() || !form.email.trim()) {
+      toast("Enter employee name and email.", "error");
+      return;
+    }
+
+    onSave({
+      ...employee,
+      name: form.name.trim(),
+      email: form.email.trim().toLowerCase(),
+      accessRole: form.accessRole,
+      department: form.department.trim() || "General",
+      role: form.role.trim() || "Employee",
+      salary: Number(form.salary || 0),
+      joinedAt: form.joinedAt.trim(),
+      birthday: form.birthday.trim(),
+      mobile: form.mobile.trim(),
+      alternativeNumber: form.alternativeNumber.trim(),
+      pan: form.pan.trim(),
+      uan: form.uan.trim(),
+      experience: form.experience.trim(),
+      qualification: form.qualification.trim(),
+      college: form.college.trim(),
+      address: form.address.trim(),
+      status: form.status || "Active"
+    });
+  };
+
+  return (
+    <div className="receipt-modal-backdrop" role="presentation" onClick={onClose}>
+      <section className="receipt-modal employee-edit-modal" role="dialog" aria-modal="true" aria-label="Edit employee profile" onClick={(event) => event.stopPropagation()}>
+        <header>
+          <div>
+            <h2>Edit Employee Profile</h2>
+            <p>{employee.email}</p>
+          </div>
+          <button type="button" className="icon-action" aria-label="Close employee editor" title="Close" onClick={onClose}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 6l12 12" />
+              <path d="M18 6L6 18" />
+            </svg>
+          </button>
+        </header>
+        <form className="form-grid employee-form-grid employee-edit-form" onSubmit={submitEdit}>
+          <label>Name<input value={form.name} onChange={(event) => updateField("name", event.target.value)} /></label>
+          <label>Email<input type="email" value={form.email} onChange={(event) => updateField("email", event.target.value)} /></label>
+          <label>Dashboard Access<select value={form.accessRole} onChange={(event) => updateField("accessRole", event.target.value)}><option value="employee">Employee</option><option value="hr">HR / Accountant</option><option value="admin">Admin</option></select></label>
+          <label>Department<input value={form.department} onChange={(event) => updateField("department", event.target.value)} /></label>
+          <label>Role<input value={form.role} onChange={(event) => updateField("role", event.target.value)} /></label>
+          <label>Salary<input type="number" min="0" value={form.salary} onChange={(event) => updateField("salary", event.target.value)} /></label>
+          <label>Date of Joining<input placeholder="dd/mm/yyyy" value={form.joinedAt} onChange={(event) => updateField("joinedAt", event.target.value)} /></label>
+          <label>Birthday<input placeholder="dd/mm/yyyy" value={form.birthday} onChange={(event) => updateField("birthday", event.target.value)} /></label>
+          <label>Mobile<input value={form.mobile} onChange={(event) => updateField("mobile", event.target.value)} /></label>
+          <label>Alternative Number<input value={form.alternativeNumber} onChange={(event) => updateField("alternativeNumber", event.target.value)} /></label>
+          <label>PAN<input value={form.pan} onChange={(event) => updateField("pan", event.target.value)} /></label>
+          <label>UAN<input value={form.uan} onChange={(event) => updateField("uan", event.target.value)} /></label>
+          <label>Experience<input value={form.experience} onChange={(event) => updateField("experience", event.target.value)} /></label>
+          <label>Qualification<input value={form.qualification} onChange={(event) => updateField("qualification", event.target.value)} /></label>
+          <label>College<input value={form.college} onChange={(event) => updateField("college", event.target.value)} /></label>
+          <label>Status<select value={form.status} onChange={(event) => updateField("status", event.target.value)}><option value="Active">Active</option><option value="Inactive">Inactive</option></select></label>
+          <label className="wide-input">Address<textarea value={form.address} onChange={(event) => updateField("address", event.target.value)} /></label>
+          <div className="modal-form-actions">
+            <button type="button" className="secondary-button" onClick={onClose}>Cancel</button>
+            <button type="submit" className="primary-button">Save Profile</button>
+          </div>
+        </form>
+      </section>
+    </div>
   );
 }
 
@@ -1132,7 +1407,7 @@ function LedgerTable({ store, className = "" }) {
 function LeaveTable({ leaves, title = "Leave Records" }) {
   return (
     <Panel title={title}>
-      <DataTable rows={leaves} columns={["id", "employeeName", "type", "from", "to", "reason", "status"]} />
+      <DataTable rows={leaves} columns={["id", "employeeName", "type", "duration", "from", "to", "reason", "status"]} />
     </Panel>
   );
 }
@@ -1256,6 +1531,7 @@ function ApprovalPanel({ title, items, kind, commit, className = "" }) {
       ...current,
       [kind]: current[kind].map((item) => item.id === id ? { ...item, status } : item)
     }));
+    toast(`${kind === "leaves" ? "Leave" : "Expense"} ${status.toLowerCase()}.`);
   };
 
   return (
@@ -1265,7 +1541,7 @@ function ApprovalPanel({ title, items, kind, commit, className = "" }) {
           <article className="approval-row" key={item.id}>
             <div>
               <strong>{item.employeeName}</strong>
-              <span>{item.type || item.category} {item.amount ? `- ${money(item.amount)}` : ""}</span>
+              <span>{item.type || item.category} {item.duration ? `- ${item.duration}` : ""} {item.amount ? `- ${money(item.amount)}` : ""}</span>
               <small>{item.reason || item.notes || `${item.from || item.date} to ${item.to || item.date}`}</small>
             </div>
             <Status status={item.status} />
