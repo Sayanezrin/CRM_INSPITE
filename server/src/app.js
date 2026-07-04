@@ -7,7 +7,7 @@ import cors from "cors";
 import express from "express";
 import { OAuth2Client } from "google-auth-library";
 import helmet from "helmet";
-import { getModels, getModelsOrNull } from "./database.js";
+import { getModels, getModelsOrNull, isMongoConfigured } from "./database.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const serverRoot = path.resolve(__dirname, "..");
@@ -290,7 +290,7 @@ app.use(cors({
 app.use(express.json({ limit: "10mb" }));
 
 app.use((req, res, next) => {
-  const isPublicApi = req.path.startsWith("/api/auth") || req.path === "/api/bootstrap" || req.path === "/api/health";
+  const isPublicApi = req.path.startsWith("/api/auth") || req.path === "/api/bootstrap" || req.path.startsWith("/api/health");
   if (!req.path.startsWith("/api") || isPublicApi) return next();
 
   const session = validateBearerToken(req.get("authorization"));
@@ -302,7 +302,15 @@ app.use((req, res, next) => {
 });
 
 app.get("/", (_req, res) => res.json({ ok: true, service: "InspitePeople.Api.Node" }));
-app.get("/api/health", async (_req, res) => {
+app.get("/api/health", (_req, res) => {
+  res.json({
+    ok: true,
+    checkedAt: new Date().toISOString(),
+    mongoConfigured: isMongoConfigured()
+  });
+});
+
+app.get("/api/health/mongodb", async (_req, res) => {
   const models = await getModelsOrNull();
   res.json({
     ok: true,

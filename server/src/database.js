@@ -40,6 +40,10 @@ function getConnectionTargets() {
   ));
 }
 
+export function isMongoConfigured() {
+  return hasMongoConnection();
+}
+
 function createModels(connection) {
   const portalStateSchema = new mongoose.Schema({
     _id: String,
