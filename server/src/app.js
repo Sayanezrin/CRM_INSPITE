@@ -297,7 +297,7 @@ app.use(cors({
 app.use(express.json({ limit: "10mb" }));
 
 app.use((req, res, next) => {
-  const isPublicApi = req.path.startsWith("/api/auth") || req.path === "/api/bootstrap" || req.path.startsWith("/api/health");
+  const isPublicApi = req.path.startsWith("/api/auth") || req.path === "/api/bootstrap" || req.path.startsWith("/api/health") || req.path === "/api/ping";
   if (!req.path.startsWith("/api") || isPublicApi) return next();
 
   const session = validateBearerToken(req.get("authorization"));
@@ -323,6 +323,27 @@ app.get("/api/health/mongodb", async (_req, res) => {
     ok: true,
     checkedAt: new Date().toISOString(),
     storage: models ? "mongodb" : "fallback"
+  });
+});
+
+app.get("/api/ping", async (_req, res) => {
+  const checkedAt = new Date().toISOString();
+  const models = await getModelsOrNull();
+  if (!models) {
+    return res.json({
+      ok: true,
+      checkedAt,
+      storage: "fallback",
+      warmed: false
+    });
+  }
+
+  await models.PortalState.findOne({ _id: "main" }).select("_id").lean();
+  res.json({
+    ok: true,
+    checkedAt,
+    storage: "mongodb",
+    warmed: true
   });
 });
 
