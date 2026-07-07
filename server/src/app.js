@@ -368,7 +368,7 @@ app.post("/api/auth/password", async (req, res) => {
     name: registered.name,
     role: selectedRole,
     provider: "password",
-    mustChangePassword: !(selectedRole === "admin" && email === roles.admin.email) && (!registered.passwordHash || registered.mustChangePassword === true)
+    mustChangePassword: !registered.passwordHash || registered.mustChangePassword === true
   };
   res.json({ token: createToken(user), user });
 });
