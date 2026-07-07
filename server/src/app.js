@@ -216,7 +216,6 @@ function findUserInPortalPayload(payload, email) {
 }
 
 async function findRegisteredUser(email) {
-  if (email === roles.admin.email) return { email, name: "Saya Nezrin", role: "admin", mustChangePassword: false };
   if (email === roles.hr.email) return { email, name: roles.hr.title, role: "hr", mustChangePassword: true };
 
   const models = await getModelsOrNull();
@@ -233,6 +232,7 @@ async function findRegisteredUser(email) {
     }
   }
 
+  if (email === roles.admin.email) return { email, name: "Saya Nezrin", role: "admin", passwordHash: "", mustChangePassword: false };
   return findUserInPortalPayload(await readPortalFile(), email);
 }
 
@@ -352,12 +352,13 @@ app.post("/api/auth/password", async (req, res) => {
   const selectedRole = normalizeRole(req.body.selectedRole);
   const password = String(req.body.password || "").trim();
 
-  if (email === roles.admin.email && password === roles.admin.password && selectedRole === "admin") {
+  const registered = await findRegisteredUser(email);
+
+  if (email === roles.admin.email && selectedRole === "admin" && !registered?.passwordHash && password === roles.admin.password) {
     const user = { email, name: "Saya Nezrin", role: "admin", provider: "password", mustChangePassword: false };
     return res.json({ token: createToken(user), user });
   }
 
-  const registered = await findRegisteredUser(email);
   if (!registered || registered.role !== selectedRole || !verifyUserPassword(password, registered)) {
     return res.status(401).json({ error: "Invalid password login." });
   }
@@ -375,7 +376,6 @@ app.post("/api/auth/password", async (req, res) => {
 app.post("/api/auth/change-password", async (req, res) => {
   const session = validateBearerToken(req.get("authorization"));
   if (!session) return res.status(401).json({ error: "Authentication required." });
-  if (session.role === "admin" && session.email === roles.admin.email) return res.status(400).json({ error: "Admin password is managed separately." });
 
   const currentPassword = String(req.body.currentPassword || "").trim();
   const newPassword = String(req.body.newPassword || "").trim();
@@ -386,7 +386,10 @@ app.post("/api/auth/change-password", async (req, res) => {
   if (!models) return res.status(503).json({ error: "MongoDB storage is required to change passwords." });
 
   const registered = await findRegisteredUser(session.email);
-  if (!registered || registered.role !== session.role || !verifyUserPassword(currentPassword, registered)) {
+  const currentPasswordValid = session.email === roles.admin.email && !registered?.passwordHash
+    ? currentPassword === roles.admin.password
+    : verifyUserPassword(currentPassword, registered);
+  if (!registered || registered.role !== session.role || !currentPasswordValid) {
     return res.status(401).json({ error: "Current password is incorrect." });
   }
 
