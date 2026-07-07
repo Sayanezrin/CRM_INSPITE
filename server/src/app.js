@@ -421,7 +421,7 @@ app.post("/api/auth/google", async (req, res) => {
     const email = payload.email.trim().toLowerCase();
     const selectedRole = normalizeRole(req.body.selectedRole);
     const registered = await findRegisteredUser(email);
-    const role = email === roles.admin.email ? selectedRole : registered?.role;
+    const role = registered?.role;
     if (!registered || role !== selectedRole) return res.status(401).json({ error: "This Google account is not registered for dashboard access." });
     const user = { email, name: registered.name || payload.name || email, role, provider: "google", picture: payload.picture };
     res.json({ token: createToken(user), user });
