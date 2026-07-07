@@ -10,11 +10,5 @@
       "source": "/(.*)",
       "destination": "/index.html"
     }
-  ],
-  "crons": [
-    {
-      "path": "/api/ping",
-      "schedule": "*/15 * * * *"
-    }
   ]
 }
