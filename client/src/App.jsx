@@ -446,7 +446,7 @@ function App() {
     return <><LoginScreen store={store} onLogin={(nextSession) => { writeSession(nextSession); setSession(nextSession); setActivePage("home"); }} /><ToastHost /></>;
   }
 
-  if (session.mustChangePassword && session.role !== "admin") {
+  if (session.mustChangePassword && !(session.role === "admin" && session.email?.trim().toLowerCase() === roles.admin.email)) {
     return <><PasswordChangeScreen session={session} onChanged={(nextSession) => { writeSession(nextSession); setSession(nextSession); setActivePage("home"); }} onLogout={() => { writeSession(null); setSession(null); }} /><ToastHost /></>;
   }
 

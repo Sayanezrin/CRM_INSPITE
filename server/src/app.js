@@ -367,7 +367,7 @@ app.post("/api/auth/password", async (req, res) => {
     name: registered.name,
     role: selectedRole,
     provider: "password",
-    mustChangePassword: selectedRole !== "admin" && (!registered.passwordHash || registered.mustChangePassword === true)
+    mustChangePassword: !(selectedRole === "admin" && email === roles.admin.email) && (!registered.passwordHash || registered.mustChangePassword === true)
   };
   res.json({ token: createToken(user), user });
 });
@@ -375,7 +375,7 @@ app.post("/api/auth/password", async (req, res) => {
 app.post("/api/auth/change-password", async (req, res) => {
   const session = validateBearerToken(req.get("authorization"));
   if (!session) return res.status(401).json({ error: "Authentication required." });
-  if (session.role === "admin") return res.status(400).json({ error: "Admin password is managed separately." });
+  if (session.role === "admin" && session.email === roles.admin.email) return res.status(400).json({ error: "Admin password is managed separately." });
 
   const currentPassword = String(req.body.currentPassword || "").trim();
   const newPassword = String(req.body.newPassword || "").trim();
