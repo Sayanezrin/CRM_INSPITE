@@ -95,7 +95,7 @@ function normalizeRole(role) {
 
 function getFirstName(name, email = "") {
   const nameFirst = String(name || "").trim().split(/\s+/).find(Boolean);
-  const emailFirst = String(email || "").trim().split("@")[0];
+  const emailFirst = String(email || "").trim().split("@")[0]?.split(/[._-]/).find(Boolean);
   const rawFirst = nameFirst || emailFirst || "Employee";
   return rawFirst.charAt(0).toUpperCase() + rawFirst.slice(1).toLowerCase();
 }
