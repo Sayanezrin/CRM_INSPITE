@@ -320,9 +320,14 @@ button:disabled {
   font-weight: 700;
 }
 
-.api-status.online {
+.api-status.connected {
   background: #e8f7ef;
   color: var(--green);
+}
+
+.api-status.connecting {
+  background: #eef4ff;
+  color: #1f5fbf;
 }
 
 .api-status.offline {

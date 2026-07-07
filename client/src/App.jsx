@@ -389,11 +389,24 @@ function App() {
   const [store, setStore] = useState(readState);
   const [session, setSession] = useState(readSession);
   const [activePage, setActivePage] = useState("home");
-  const [apiConnected, setApiConnected] = useState(false);
+  const [apiStatus, setApiStatus] = useState("connecting");
+
+  const refreshBackendHealth = () => fetch(`${API_URL}/api/health/mongodb`)
+    .then((response) => response.ok ? response.json() : Promise.reject(new Error(`Health check failed: ${response.status}`)))
+    .then((payload) => {
+      if (payload.storage === "mongodb") setApiStatus("connected");
+      else if (payload.storage === "connecting") setApiStatus("connecting");
+      else setApiStatus("offline");
+      return payload;
+    })
+    .catch(() => {
+      setApiStatus("offline");
+      return null;
+    });
 
   const refreshPortalState = () => apiJson("/api/portal")
     .then((payload) => {
-      setApiConnected(true);
+      setApiStatus("connected");
       if (!hasPortalData(payload)) return null;
       const nextPayload = { ...seedState, ...payload, logins: payload.logins || [] };
       setStore(nextPayload);
@@ -401,7 +414,7 @@ function App() {
       return nextPayload;
     })
     .catch(() => {
-      setApiConnected(false);
+      setApiStatus("offline");
       return null;
     });
 
@@ -409,6 +422,7 @@ function App() {
     if (!session?.token) return;
     let cancelled = false;
     let retryTimer;
+    let healthInterval;
 
     const loadPortal = () => {
       refreshPortalState()
@@ -419,10 +433,13 @@ function App() {
         });
     };
 
+    refreshBackendHealth();
+    healthInterval = window.setInterval(refreshBackendHealth, 5000);
     loadPortal();
     return () => {
       cancelled = true;
       window.clearTimeout(retryTimer);
+      window.clearInterval(healthInterval);
     };
   }, [session?.token]);
 
@@ -454,7 +471,7 @@ function App() {
     <div className="portal-shell">
       <Sidebar session={session} activePage={activePage} onPageChange={setActivePage} onLogout={() => { writeSession(null); setSession(null); }} />
       <main className="portal-main">
-        <Header session={session} store={store} activePage={activePage} apiConnected={apiConnected} />
+        <Header session={session} store={store} activePage={activePage} apiStatus={apiStatus} />
         <RolePage session={session} activePage={activePage} store={store} commit={commit} />
       </main>
       <ToastHost />
@@ -660,16 +677,21 @@ function Sidebar({ session, activePage, onPageChange, onLogout }) {
   );
 }
 
-function Header({ session, store, activePage, apiConnected }) {
+function Header({ session, store, activePage, apiStatus }) {
   const approvedExpenses = store.expenses.filter((item) => item.status === "Approved").reduce((sum, item) => sum + Number(item.amount), 0);
   const pendingApprovals = store.expenses.filter((item) => item.status === "Pending").length + store.leaves.filter((item) => item.status === "Pending").length;
   const pageTitle = getNavItemsForRole(session.role).find((item) => item.id === activePage)?.label || "Home";
+  const statusLabel = apiStatus === "connected"
+    ? "Backend storage connected"
+    : apiStatus === "connecting"
+      ? "Backend storage connecting"
+      : "Offline fallback storage";
   return (
     <header className="page-header">
       <div>
         <p>{session.email}</p>
         <h1>{session.name} - {pageTitle}</h1>
-        <span className={`api-status ${apiConnected ? "online" : "offline"}`}>{apiConnected ? "Backend storage connected" : "Offline fallback storage"}</span>
+        <span className={`api-status ${apiStatus}`}>{statusLabel}</span>
       </div>
       {session.role !== "employee" && (
         <div className="header-metrics">

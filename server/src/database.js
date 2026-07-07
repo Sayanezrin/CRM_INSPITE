@@ -12,7 +12,7 @@ const mongoConnectionString = process.env.MONGODB_URI || process.env.MONGODB_CON
 const mongoDirectConnectionString = process.env.MONGODB_DIRECT_URI || "";
 const databaseName = process.env.MONGODB_DATABASE_NAME || "inspite_people";
 const portalCollectionName = process.env.MONGODB_PORTAL_COLLECTION || "portalState";
-const connectionTimeoutMs = Number(process.env.MONGODB_CONNECTION_TIMEOUT_MS || 10000);
+const connectionTimeoutMs = Number(process.env.MONGODB_CONNECTION_TIMEOUT_MS || 30000);
 const dnsServers = (process.env.MONGODB_DNS_SERVERS || "")
   .split(",")
   .map((server) => server.trim())
@@ -24,6 +24,7 @@ if (dnsServers.length) {
 
 let connectionPromise;
 let modelsPromise;
+let connectionStatus = "disconnected";
 
 function hasMongoConnection() {
   return [mongoConnectionString, mongoDirectConnectionString].some((uri) => uri && !uri.includes("<db_password>"));
@@ -42,6 +43,13 @@ function getConnectionTargets() {
 
 export function isMongoConfigured() {
   return hasMongoConnection();
+}
+
+export function getMongoConnectionStatus() {
+  if (!hasMongoConnection()) return "unconfigured";
+  if (connectionStatus === "connected") return "connected";
+  if (connectionStatus === "connecting") return "connecting";
+  return "disconnected";
 }
 
 function createModels(connection) {
@@ -127,6 +135,7 @@ export async function getModels() {
     for (const target of getConnectionTargets()) {
       try {
         console.log(`MongoDB connection started (${target.label})`);
+        connectionStatus = "connecting";
         connectionPromise = mongoose.createConnection(target.uri, {
           dbName: databaseName,
           serverSelectionTimeoutMS: connectionTimeoutMs,
@@ -141,10 +150,12 @@ export async function getModels() {
         console.log("Host:", connection.host);
         console.log("Database:", connection.name);
 
+        connectionStatus = "connected";
         return createModels(connection);
       } catch (error) {
         lastError = error;
         connectionPromise = null;
+        connectionStatus = "disconnected";
         console.error(`MongoDB ${target.label} connection failed:`, error.message);
       }
     }

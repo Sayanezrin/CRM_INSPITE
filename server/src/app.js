@@ -7,7 +7,7 @@ import cors from "cors";
 import express from "express";
 import { OAuth2Client } from "google-auth-library";
 import helmet from "helmet";
-import { getModels, getModelsOrNull, isMongoConfigured } from "./database.js";
+import { getModels, getModelsOrNull, getMongoConnectionStatus, isMongoConfigured } from "./database.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const serverRoot = path.resolve(__dirname, "..");
@@ -318,11 +318,19 @@ app.get("/api/health", (_req, res) => {
 });
 
 app.get("/api/health/mongodb", async (_req, res) => {
+  if (getMongoConnectionStatus() === "connecting") {
+    return res.json({
+      ok: true,
+      checkedAt: new Date().toISOString(),
+      storage: "connecting"
+    });
+  }
+
   const models = await getModelsOrNull();
   res.json({
     ok: true,
     checkedAt: new Date().toISOString(),
-    storage: models ? "mongodb" : "fallback"
+    storage: models ? "mongodb" : getMongoConnectionStatus() === "connecting" ? "connecting" : "fallback"
   });
 });
 
