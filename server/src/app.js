@@ -232,7 +232,7 @@ async function findRegisteredUser(email) {
     }
   }
 
-  if (email === roles.admin.email) return { email, name: "Saya Nezrin", role: "admin", passwordHash: "", mustChangePassword: false };
+  if (email === roles.admin.email) return { email, name: "Saya Nezrin", role: "admin", passwordHash: "", mustChangePassword: true };
   return findUserInPortalPayload(await readPortalFile(), email);
 }
 
@@ -355,7 +355,7 @@ app.post("/api/auth/password", async (req, res) => {
   const registered = await findRegisteredUser(email);
 
   if (email === roles.admin.email && selectedRole === "admin" && !registered?.passwordHash && password === roles.admin.password) {
-    const user = { email, name: "Saya Nezrin", role: "admin", provider: "password", mustChangePassword: false };
+    const user = { email, name: "Saya Nezrin", role: "admin", provider: "password", mustChangePassword: true };
     return res.json({ token: createToken(user), user });
   }
 

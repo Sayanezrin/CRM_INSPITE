@@ -114,7 +114,7 @@ function getLocalPasswordLogin({ email, password, selectedRole, store }) {
 
   if (normalizedEmail === roles.admin.email) {
     if (normalizedRole !== "admin" || password.trim() !== roles.admin.password) return null;
-    return { email: normalizedEmail, name: "Saya Nezrin", role: "admin", provider: "local-password", token: `local-${Date.now()}`, mustChangePassword: false };
+    return { email: normalizedEmail, name: "Saya Nezrin", role: "admin", provider: "local-password", token: `local-${Date.now()}`, mustChangePassword: true };
   }
 
   const registeredUser = [
