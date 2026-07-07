@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import inspiteLogoImage from "./assets/inspite-logo.png";
 
 const STORAGE_KEY = "inspite.people.role.portal";
@@ -390,23 +390,31 @@ function App() {
   const [session, setSession] = useState(readSession);
   const [activePage, setActivePage] = useState("home");
   const [apiStatus, setApiStatus] = useState("connecting");
+  const healthFailuresRef = useRef(0);
 
   const refreshBackendHealth = () => fetch(`${API_URL}/api/health/mongodb`)
     .then((response) => response.ok ? response.json() : Promise.reject(new Error(`Health check failed: ${response.status}`)))
     .then((payload) => {
-      if (payload.storage === "mongodb") setApiStatus("connected");
-      else if (payload.storage === "connecting") setApiStatus("connecting");
-      else setApiStatus("offline");
+      if (payload.storage === "mongodb") {
+        healthFailuresRef.current = 0;
+        setApiStatus("connected");
+      } else if (payload.storage === "connecting") {
+        healthFailuresRef.current = 0;
+        setApiStatus((current) => current === "connected" ? "connected" : "connecting");
+      } else {
+        healthFailuresRef.current += 1;
+        if (healthFailuresRef.current >= 2) setApiStatus("offline");
+      }
       return payload;
     })
     .catch(() => {
-      setApiStatus("offline");
+      healthFailuresRef.current += 1;
+      if (healthFailuresRef.current >= 2) setApiStatus("offline");
       return null;
     });
 
   const refreshPortalState = () => apiJson("/api/portal")
     .then((payload) => {
-      setApiStatus("connected");
       if (!hasPortalData(payload)) return null;
       const nextPayload = { ...seedState, ...payload, logins: payload.logins || [] };
       setStore(nextPayload);
@@ -414,7 +422,6 @@ function App() {
       return nextPayload;
     })
     .catch(() => {
-      setApiStatus("offline");
       return null;
     });
 
@@ -434,7 +441,7 @@ function App() {
     };
 
     refreshBackendHealth();
-    healthInterval = window.setInterval(refreshBackendHealth, 5000);
+    healthInterval = window.setInterval(refreshBackendHealth, 10000);
     loadPortal();
     return () => {
       cancelled = true;
