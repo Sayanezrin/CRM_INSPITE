@@ -248,6 +248,12 @@ function escapeHtml(value) {
 function parseRecordDate(value) {
   if (!value) return null;
   const raw = String(value).trim();
+  const yyyymmdd = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (yyyymmdd) {
+    const [, year, month, day] = yyyymmdd;
+    const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
   const ddmmyyyy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (ddmmyyyy) {
     const [, day, month, year] = ddmmyyyy;
@@ -256,6 +262,36 @@ function parseRecordDate(value) {
   }
   const parsed = new Date(raw);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function dateInputValue(value) {
+  const date = parseRecordDate(value);
+  if (!date) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function isWithinDateRange(value, from, to) {
+  const date = parseRecordDate(value);
+  if (!date) return false;
+  date.setHours(12, 0, 0, 0);
+  const start = from ? parseRecordDate(from) : null;
+  const end = to ? parseRecordDate(to) : null;
+  if (start) start.setHours(0, 0, 0, 0);
+  if (end) end.setHours(23, 59, 59, 999);
+  return (!start || date >= start) && (!end || date <= end);
+}
+
+function isSameRecordDate(value, selectedDate) {
+  if (!selectedDate) return true;
+  return dateInputValue(value) === selectedDate;
+}
+
+function isSameRecordMonth(value, selectedMonth) {
+  if (!selectedMonth) return true;
+  return dateInputValue(value).startsWith(selectedMonth);
 }
 
 function getPeriodRange(period) {
@@ -1052,8 +1088,8 @@ function AddEmployeePanel({ commit }) {
         <input placeholder="Department" value={employee.department} onChange={(event) => setEmployee({ ...employee, department: event.target.value })} />
         <input placeholder="Role" value={employee.role} onChange={(event) => setEmployee({ ...employee, role: event.target.value })} />
         <input type="number" placeholder="Salary" value={employee.salary} onChange={(event) => setEmployee({ ...employee, salary: event.target.value })} />
-        <label>Date of joining<input placeholder="dd/mm/yyyy" value={employee.joinedAt} onChange={(event) => setEmployee({ ...employee, joinedAt: event.target.value })} /></label>
-        <label>Birthday<input placeholder="dd/mm/yyyy" value={employee.birthday} onChange={(event) => setEmployee({ ...employee, birthday: event.target.value })} /></label>
+        <label>Date of joining<input type="date" value={dateInputValue(employee.joinedAt)} onChange={(event) => setEmployee({ ...employee, joinedAt: event.target.value })} /></label>
+        <label>Birthday<input type="date" value={dateInputValue(employee.birthday)} onChange={(event) => setEmployee({ ...employee, birthday: event.target.value })} /></label>
         <input placeholder="Mobile number" value={employee.mobile} onChange={(event) => setEmployee({ ...employee, mobile: event.target.value })} />
         <input placeholder="Alternative number" value={employee.alternativeNumber} onChange={(event) => setEmployee({ ...employee, alternativeNumber: event.target.value })} />
         <input placeholder="Aadhaar number" value={employee.aadhaar} onChange={(event) => setEmployee({ ...employee, aadhaar: event.target.value })} />
@@ -1093,7 +1129,7 @@ function LedgerEntryPanel({ commit, className = "" }) {
         <input type="number" placeholder="Amount" value={entry.amount} onChange={(event) => setEntry({ ...entry, amount: event.target.value })} />
         <input placeholder="Account" value={entry.account} onChange={(event) => setEntry({ ...entry, account: event.target.value })} />
         <input placeholder="Category" value={entry.category} onChange={(event) => setEntry({ ...entry, category: event.target.value })} />
-        <input placeholder="dd/mm/yyyy" value={entry.date} onChange={(event) => setEntry({ ...entry, date: event.target.value })} />
+        <input type="date" value={dateInputValue(entry.date)} onChange={(event) => setEntry({ ...entry, date: event.target.value })} />
         <input placeholder="Note" value={entry.note} onChange={(event) => setEntry({ ...entry, note: event.target.value })} />
         <button className="primary-button">Save to Ledger</button>
       </form>
@@ -1179,7 +1215,7 @@ function AdminExpenseFormPanel({ store, commit, createdBy = "Admin", title = "Ad
           {debitExpenseCategories.map((category) => <option key={category}>{category}</option>)}
         </select>
         <input type="number" placeholder="Amount" value={expense.amount} onChange={(event) => setExpense({ ...expense, amount: event.target.value })} />
-        <input placeholder="dd/mm/yyyy" value={expense.date} onChange={(event) => setExpense({ ...expense, date: event.target.value })} />
+        <input type="date" value={dateInputValue(expense.date)} onChange={(event) => setExpense({ ...expense, date: event.target.value })} />
         <input className="wide-input" placeholder="Notes" value={expense.notes} onChange={(event) => setExpense({ ...expense, notes: event.target.value })} />
         <label className="receipt-field">
           <span>Receipt</span>
@@ -1269,8 +1305,8 @@ function LeaveFormPanel({ commit, currentEmployee }) {
       <form className="form-grid" onSubmit={applyLeave}>
         <select value={leave.type} onChange={(event) => setLeave({ ...leave, type: event.target.value })}><option>Casual Leave</option><option>Sick Leave</option><option>Earned Leave</option></select>
         <select value={leave.duration} onChange={(event) => setLeave({ ...leave, duration: event.target.value })}><option>Full Day Leave</option><option>Half Day Leave</option></select>
-        <input placeholder="dd/mm/yyyy" value={leave.from} onChange={(event) => setLeave({ ...leave, from: event.target.value })} />
-        <input placeholder="dd/mm/yyyy" value={leave.to} onChange={(event) => setLeave({ ...leave, to: event.target.value })} />
+        <input type="date" value={dateInputValue(leave.from)} onChange={(event) => setLeave({ ...leave, from: event.target.value })} />
+        <input type="date" value={dateInputValue(leave.to)} onChange={(event) => setLeave({ ...leave, to: event.target.value })} />
         <input placeholder="Reason" value={leave.reason} onChange={(event) => setLeave({ ...leave, reason: event.target.value })} />
         <button className="primary-button">Apply Leave</button>
       </form>
@@ -1335,7 +1371,7 @@ function ExpenseFormPanel({ commit, currentEmployee }) {
           <option>Uber</option><option>Travel</option><option>Food</option><option>Hotel</option><option>Internet</option><option>Other</option>
         </select>
         <input type="number" placeholder="Amount" value={expense.amount} onChange={(event) => setExpense({ ...expense, amount: event.target.value })} />
-        <input placeholder="dd/mm/yyyy" value={expense.date} onChange={(event) => setExpense({ ...expense, date: event.target.value })} />
+        <input type="date" value={dateInputValue(expense.date)} onChange={(event) => setExpense({ ...expense, date: event.target.value })} />
         <input placeholder="Notes" value={expense.notes} onChange={(event) => setExpense({ ...expense, notes: event.target.value })} />
         <label className="receipt-field">
           <span>Receipt</span>
@@ -1593,8 +1629,8 @@ function EmployeeEditModal({ employee, onClose, onSave }) {
           <label>Department<input value={form.department} onChange={(event) => updateField("department", event.target.value)} /></label>
           <label>Role<input value={form.role} onChange={(event) => updateField("role", event.target.value)} /></label>
           <label>Salary<input type="number" min="0" value={form.salary} onChange={(event) => updateField("salary", event.target.value)} /></label>
-          <label>Date of Joining<input placeholder="dd/mm/yyyy" value={form.joinedAt} onChange={(event) => updateField("joinedAt", event.target.value)} /></label>
-          <label>Birthday<input placeholder="dd/mm/yyyy" value={form.birthday} onChange={(event) => updateField("birthday", event.target.value)} /></label>
+          <label>Date of Joining<input type="date" value={dateInputValue(form.joinedAt)} onChange={(event) => updateField("joinedAt", event.target.value)} /></label>
+          <label>Birthday<input type="date" value={dateInputValue(form.birthday)} onChange={(event) => updateField("birthday", event.target.value)} /></label>
           <label>Mobile<input value={form.mobile} onChange={(event) => updateField("mobile", event.target.value)} /></label>
           <label>Alternative Number<input value={form.alternativeNumber} onChange={(event) => updateField("alternativeNumber", event.target.value)} /></label>
           <label>Aadhaar Number<input value={form.aadhaar} onChange={(event) => updateField("aadhaar", event.target.value)} /></label>
@@ -1634,6 +1670,12 @@ function LeaveTable({ leaves, title = "Leave Records" }) {
 
 function ExpenseTable({ expenses, title = "Expense Records", className = "" }) {
   const [receiptPreview, setReceiptPreview] = useState(null);
+  const [selectedMonth, setSelectedMonth] = useState("");
+  const [selectedDate, setSelectedDate] = useState("");
+  const filteredExpenses = expenses.filter((expense) => (
+    isSameRecordMonth(expense.date || expense.submittedAt, selectedMonth) &&
+    isSameRecordDate(expense.date || expense.submittedAt, selectedDate)
+  ));
 
   if (!expenses.length) {
     return (
@@ -1645,30 +1687,37 @@ function ExpenseTable({ expenses, title = "Expense Records", className = "" }) {
 
   return (
     <Panel title={title} className={className}>
-      <div className="data-table expense-records">
-        <div className="data-head">
-          <span>id</span>
-          <span>employee</span>
-          <span>category</span>
-          <span>date</span>
-          <span>amount</span>
-          <span>notes</span>
-          <span>receipt</span>
-          <span>status</span>
-        </div>
-        {expenses.map((expense) => (
-          <div className="data-row" key={expense.id}>
-            <span>{expense.id}</span>
-            <span>{expense.employeeName}</span>
-            <span>{expense.category}</span>
-            <span>{expense.date}</span>
-            <span>{money(expense.amount)}</span>
-            <span>{expense.notes || "--"}</span>
-            <span>{expense.receipt ? <button type="button" className="table-action" onClick={() => setReceiptPreview(expense.receipt)}>View Receipt</button> : "--"}</span>
-            <span><Status status={expense.status} /></span>
-          </div>
-        ))}
+      <div className="table-filter-bar">
+        <label>Month<input type="month" value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)} /></label>
+        <label>Date<input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} /></label>
+        <button type="button" className="secondary-button" onClick={() => { setSelectedMonth(""); setSelectedDate(""); }}>Clear</button>
       </div>
+      {filteredExpenses.length ? (
+        <div className="data-table expense-records">
+          <div className="data-head">
+            <span>id</span>
+            <span>employee</span>
+            <span>category</span>
+            <span>date</span>
+            <span>amount</span>
+            <span>notes</span>
+            <span>receipt</span>
+            <span>status</span>
+          </div>
+          {filteredExpenses.map((expense) => (
+            <div className="data-row" key={expense.id}>
+              <span>{expense.id}</span>
+              <span>{expense.employeeName}</span>
+              <span>{expense.category}</span>
+              <span>{expense.date || expense.submittedAt || "--"}</span>
+              <span>{money(expense.amount)}</span>
+              <span>{expense.notes || "--"}</span>
+              <span>{expense.receipt ? <button type="button" className="table-action" onClick={() => setReceiptPreview(expense.receipt)}>View Receipt</button> : "--"}</span>
+              <span><Status status={expense.status} /></span>
+            </div>
+          ))}
+        </div>
+      ) : <p className="empty-note">No records match the selected date filters.</p>}
       {receiptPreview && (
         <ReceiptPreviewModal receipt={receiptPreview} onClose={() => setReceiptPreview(null)} />
       )}
@@ -1714,9 +1763,20 @@ function ReceiptPreviewModal({ receipt, onClose }) {
 }
 
 function AttendanceTable({ attendance, title = "Attendance Records", className = "" }) {
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const filteredAttendance = fromDate || toDate
+    ? attendance.filter((record) => isWithinDateRange(record.date, fromDate, toDate))
+    : attendance;
+
   return (
     <Panel title={title} className={className}>
-      <DataTable rows={attendance} columns={["id", "employeeName", "date", "status", "checkIn", "checkOut"]} className="attendance-records" />
+      <div className="table-filter-bar">
+        <label>From<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label>
+        <label>To<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>
+        <button type="button" className="secondary-button" onClick={() => { setFromDate(""); setToDate(""); }}>Clear</button>
+      </div>
+      <DataTable rows={filteredAttendance} columns={["id", "employeeName", "date", "status", "checkIn", "checkOut"]} className="attendance-records" />
     </Panel>
   );
 }

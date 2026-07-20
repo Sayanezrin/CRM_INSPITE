@@ -501,6 +501,27 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.table-filter-bar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(160px, 220px)) auto;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 14px;
+}
+
+.table-filter-bar label {
+  display: grid;
+  gap: 6px;
+  color: #344154;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.table-filter-bar button {
+  min-height: 40px;
+  padding: 0 16px;
+}
+
 .checkout-button {
   border-color: #9bb5d8;
   background: #eef5ff;
@@ -897,6 +918,10 @@ button:disabled {
   .wide-input,
   .expense-submit-button {
     grid-column: span 1;
+  }
+
+  .table-filter-bar {
+    grid-template-columns: 1fr;
   }
 
   .form-grid .primary-button,
