@@ -1431,7 +1431,7 @@ function EmployeeTable({ employees, commit, canDelete = false, className = "" })
   if (!canDelete) {
     return (
       <Panel title="Employee Directory" className={className}>
-        <DataTable rows={employees} columns={employeeColumns} />
+        <DataTable rows={employees} columns={employeeColumns} className="employee-records" />
       </Panel>
     );
   }
@@ -1716,7 +1716,7 @@ function ReceiptPreviewModal({ receipt, onClose }) {
 function AttendanceTable({ attendance, title = "Attendance Records", className = "" }) {
   return (
     <Panel title={title} className={className}>
-      <DataTable rows={attendance} columns={["id", "employeeName", "date", "status", "checkIn", "checkOut"]} />
+      <DataTable rows={attendance} columns={["id", "employeeName", "date", "status", "checkIn", "checkOut"]} className="attendance-records" />
     </Panel>
   );
 }
@@ -1825,10 +1825,10 @@ function Status({ status }) {
   return <span className={`status ${String(status).toLowerCase()}`}>{status}</span>;
 }
 
-function DataTable({ rows, columns }) {
+function DataTable({ rows, columns, className = "" }) {
   if (!rows.length) return <p className="empty-note">No records yet.</p>;
   return (
-    <div className="data-table">
+    <div className={`data-table ${className}`.trim()}>
       <div className="data-head" style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(130px, 1fr))` }}>
         {columns.map((column) => <span key={column}>{column}</span>)}
       </div>

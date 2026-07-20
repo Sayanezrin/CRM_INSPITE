@@ -512,10 +512,22 @@ button:disabled {
   border-radius: 7px;
 }
 
+.employee-records,
+.attendance-records {
+  max-height: 420px;
+  overflow: auto;
+}
+
 .data-head,
 .data-row {
   min-width: 780px;
   display: grid;
+}
+
+.data-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
 .expense-records .data-head,
