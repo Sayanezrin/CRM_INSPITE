@@ -1,0 +1,19 @@
+{
+  "name": "Inspite People",
+  "short_name": "Inspite",
+  "description": "Employee attendance, leave, expenses, and people management for Inspite.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eef3f8",
+  "theme_color": "#14243e",
+  "icons": [
+    {
+      "src": "/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
