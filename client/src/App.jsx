@@ -5,6 +5,11 @@ const STORAGE_KEY = "inspite.people.role.portal";
 const SESSION_KEY = "inspite.people.role.session";
 const LOCAL_PASSWORDS_KEY = "inspite.people.local.passwords";
 const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://127.0.0.1:5018" : "");
+const CHECKIN_LOCATION = {
+  latitude: Number(import.meta.env.VITE_CHECKIN_LATITUDE || 10.011327),
+  longitude: Number(import.meta.env.VITE_CHECKIN_LONGITUDE || 76.3607931),
+  radiusMeters: Number(import.meta.env.VITE_CHECKIN_RADIUS_METERS || 200)
+};
 
 const roles = {
   admin: { title: "Admin", email: "sayanezrin@gmail.com", password: "admin123" },
@@ -331,6 +336,50 @@ function isWithinPeriod(value, period) {
   if (!date) return false;
   const { start, end } = getPeriodRange(period);
   return date >= start && date <= end;
+}
+
+function distanceBetweenMeters(first, second) {
+  const earthRadiusMeters = 6371000;
+  const toRadians = (degrees) => degrees * Math.PI / 180;
+  const deltaLatitude = toRadians(second.latitude - first.latitude);
+  const deltaLongitude = toRadians(second.longitude - first.longitude);
+  const startLatitude = toRadians(first.latitude);
+  const endLatitude = toRadians(second.latitude);
+  const value = Math.sin(deltaLatitude / 2) ** 2
+    + Math.cos(startLatitude) * Math.cos(endLatitude) * Math.sin(deltaLongitude / 2) ** 2;
+  return 2 * earthRadiusMeters * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
+}
+
+function requestCurrentLocation() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("Location is not available on this device."));
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => resolve({
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy
+      }),
+      () => reject(new Error("Allow location permission to check in.")),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+    );
+  });
+}
+
+async function verifyCheckInLocation() {
+  const currentLocation = await requestCurrentLocation();
+  const distanceMeters = distanceBetweenMeters(currentLocation, CHECKIN_LOCATION);
+  if (distanceMeters > CHECKIN_LOCATION.radiusMeters) {
+    throw new Error(`Check-in is allowed only at the office location. You are about ${Math.round(distanceMeters)}m away.`);
+  }
+  return {
+    ...currentLocation,
+    distanceMeters: Math.round(distanceMeters),
+    allowedRadiusMeters: CHECKIN_LOCATION.radiusMeters
+  };
 }
 
 function ledgerEntryFromExpense(expense, createdBy = expense.createdBy || "Admin") {
@@ -1377,24 +1426,28 @@ function EmployeeAttendancePanel({ store, commit, currentEmployee }) {
 
   const markAttendance = async (status) => {
     if (checkInDisabled || savingAttendance) return;
-    const record = {
-      id: uid("ATT"),
-      employeeId: currentEmployee.id,
-      employeeName: currentEmployee.name,
-      userEmail: currentEmployee.email,
-      date: today(),
-      status,
-      checkIn: new Date().toTimeString().slice(0, 5),
-      checkOut: ""
-    };
     setSavingAttendance(true);
     try {
+      const checkInLocation = status === "Checked In" ? await verifyCheckInLocation() : null;
+      const record = {
+        id: uid("ATT"),
+        employeeId: currentEmployee.id,
+        employeeName: currentEmployee.name,
+        userEmail: currentEmployee.email,
+        date: today(),
+        status,
+        checkIn: new Date().toTimeString().slice(0, 5),
+        checkOut: "",
+        checkInLocation
+      };
       const saved = await commit((current) => {
         const attendance = (current.attendance || []).filter((item) => item.id !== record.id);
         attendance.unshift(record);
         return { ...current, attendance };
       });
       if (saved !== false) toast(status === "Work From Home" ? "Work from home marked." : "Check-in marked.");
+    } catch (error) {
+      toast(error.message || "Could not verify your check-in location.", "error");
     } finally {
       setSavingAttendance(false);
     }
