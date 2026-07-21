@@ -466,6 +466,7 @@ function App() {
     let cancelled = false;
     let retryTimer;
     let healthInterval;
+    let portalInterval;
 
     const loadPortal = () => {
       refreshPortalState()
@@ -479,10 +480,12 @@ function App() {
     refreshBackendHealth();
     healthInterval = window.setInterval(refreshBackendHealth, 10000);
     loadPortal();
+    portalInterval = window.setInterval(refreshPortalState, 5000);
     return () => {
       cancelled = true;
       window.clearTimeout(retryTimer);
       window.clearInterval(healthInterval);
+      window.clearInterval(portalInterval);
     };
   }, [session?.token]);
 
