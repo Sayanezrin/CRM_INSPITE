@@ -173,6 +173,13 @@ async function savePortalState(value) {
   }
 }
 
+function findChangedAttendanceRecord(previousAttendance = [], nextAttendance = []) {
+  return nextAttendance.find((record) => {
+    const previous = previousAttendance.find((item) => item.id === record.id);
+    return !previous || JSON.stringify(previous) !== JSON.stringify(record);
+  });
+}
+
 function money(value) {
   return `Rs. ${Number(value || 0).toLocaleString("en-IN")}`;
 }
@@ -512,13 +519,21 @@ function App() {
       const latest = await apiJson("/api/portal");
       const base = hasPortalData(latest) ? { ...seedState, ...latest, logins: latest.logins || [] } : readState();
       const next = typeof updater === "function" ? updater(base) : updater;
+      const changedRecord = findChangedAttendanceRecord(base.attendance, next.attendance);
+      if (!changedRecord) throw new Error("No attendance change found.");
+
       writeState(next);
       setStore(next);
       savedLocal = true;
-      await apiJson("/api/portal", {
-        method: "PUT",
-        body: JSON.stringify(next)
+      const savedPortal = await apiJson("/api/portal/attendance-record", {
+        method: "POST",
+        body: JSON.stringify({ record: changedRecord })
       });
+      if (hasPortalData(savedPortal)) {
+        const nextPortal = { ...seedState, ...savedPortal, logins: savedPortal.logins || [] };
+        writeState(nextPortal);
+        setStore(nextPortal);
+      }
       window.setTimeout(refreshPortalState, 250);
       return true;
     } catch {

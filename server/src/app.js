@@ -20,6 +20,15 @@ const roles = {
   employee: { title: "Employee", email: "employee@inspite.local" }
 };
 
+const emptyPortalState = {
+  employees: [],
+  logins: [],
+  ledger: [],
+  expenses: [],
+  leaves: [],
+  attendance: []
+};
+
 const employee = {
   id: 1,
   name: "SAYA NEZRIN",
@@ -161,6 +170,15 @@ async function getPortalState() {
   return readPortalFile();
 }
 
+function normalizePortalState(payload) {
+  return {
+    ...emptyPortalState,
+    ...(payload || {}),
+    logins: payload?.logins || [],
+    attendance: payload?.attendance || []
+  };
+}
+
 async function syncPortalUsers(models, payload) {
   if (!models) return;
   const users = [...(payload.logins || []), ...(payload.employees || [])];
@@ -206,6 +224,20 @@ async function savePortalState(payload) {
   }
   await writePortalFile(payload);
   return { saved: true, storage: "json", savedAt: new Date().toISOString() };
+}
+
+async function savePortalAttendanceRecord(record) {
+  const current = normalizePortalState(await getPortalState());
+  const attendance = [...current.attendance];
+  const existingIndex = attendance.findIndex((item) => item.id === record.id);
+  if (existingIndex >= 0) {
+    attendance[existingIndex] = record;
+  } else {
+    attendance.unshift(record);
+  }
+  const next = { ...current, attendance };
+  await savePortalState(next);
+  return next;
 }
 
 function findUserInPortalPayload(payload, email) {
@@ -449,6 +481,26 @@ app.get("/api/portal", async (_req, res, next) => {
 app.put("/api/portal", async (req, res, next) => {
   try {
     res.json(await savePortalState(req.body));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/portal/attendance-record", async (req, res, next) => {
+  try {
+    const record = req.body?.record;
+    if (!record?.id || !record?.employeeId || !record?.date) {
+      return res.status(400).json({ error: "Attendance record is incomplete." });
+    }
+
+    const savedPortal = await savePortalAttendanceRecord({
+      ...record,
+      employeeName: String(record.employeeName || ""),
+      status: String(record.status || "Checked In"),
+      checkIn: String(record.checkIn || ""),
+      checkOut: String(record.checkOut || "")
+    });
+    res.json(savedPortal);
   } catch (error) {
     next(error);
   }
