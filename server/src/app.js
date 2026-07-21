@@ -320,7 +320,12 @@ async function savePortalAttendanceRecord(record) {
       { $set: savedRecord, $setOnInsert: { createdAt: now } },
       { upsert: true }
     );
-    return getPortalState();
+    return {
+      saved: true,
+      storage: "mongodb",
+      attendanceRecord: toPortalAttendanceRecord(savedRecord),
+      savedAt: now.toISOString()
+    };
   }
 
   const current = normalizePortalState(await getPortalState());

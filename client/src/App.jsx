@@ -580,8 +580,10 @@ function App() {
   const commitAttendance = async (updater, attendanceRecord) => {
     let savedLocal = false;
     try {
-      const latest = await apiJson("/api/portal");
-      const base = hasPortalData(latest) ? { ...seedState, ...latest, logins: latest.logins || [] } : readState();
+      const latest = attendanceRecord ? null : await apiJson("/api/portal");
+      const base = attendanceRecord
+        ? store
+        : hasPortalData(latest) ? { ...seedState, ...latest, logins: latest.logins || [] } : readState();
       const next = typeof updater === "function" ? updater(base) : updater;
       const changedRecord = attendanceRecord || findChangedAttendanceRecord(base.attendance, next.attendance);
       if (!changedRecord) throw new Error("No attendance change found.");
@@ -600,9 +602,9 @@ function App() {
       }
       window.setTimeout(refreshPortalState, 250);
       return true;
-    } catch {
+    } catch (error) {
       if (!savedLocal) commit(updater);
-      toast("Attendance saved on this device only. Admin can see it after backend storage reconnects.", "error");
+      toast(error.message || "Attendance saved on this device only. Admin can see it after backend storage reconnects.", "error");
       return false;
     }
   };
