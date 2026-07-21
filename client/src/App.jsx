@@ -1941,24 +1941,84 @@ function ReceiptPreviewModal({ receipt, onClose }) {
 function AttendanceTable({ attendance, title = "Attendance Records", className = "" }) {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-  const filteredAttendance = fromDate || toDate
-    ? attendance.filter((record) => isWithinDateRange(record.date, fromDate, toDate))
-    : attendance;
+  const [employeeName, setEmployeeName] = useState("");
+  const employeeNames = [...new Set(attendance.map((record) => record.employeeName).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const filteredAttendance = attendance.filter((record) => (
+    (!fromDate && !toDate ? true : isWithinDateRange(record.date, fromDate, toDate))
+    && (!employeeName || record.employeeName === employeeName)
+  ));
   const attendanceRows = filteredAttendance.map((record) => ({
     ...record,
     employeeId: record.employeeId || record.id
   }));
+  const weeklyRows = buildAttendanceReportRows(attendanceRows, "weekly");
+  const monthlyRows = buildAttendanceReportRows(attendanceRows, "monthly");
 
   return (
     <Panel title={title} className={className}>
       <div className="table-filter-bar">
+        <label>Name<select value={employeeName} onChange={(event) => setEmployeeName(event.target.value)}>
+          <option value="">All employees</option>
+          {employeeNames.map((name) => <option key={name} value={name}>{name}</option>)}
+        </select></label>
         <label>From<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label>
         <label>To<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>
-        <button type="button" className="secondary-button" onClick={() => { setFromDate(""); setToDate(""); }}>Clear</button>
+        <button type="button" className="secondary-button" onClick={() => { setEmployeeName(""); setFromDate(""); setToDate(""); }}>Clear</button>
+      </div>
+      <div className="attendance-report-grid">
+        <div className="attendance-report-card">
+          <h3>Weekly Report</h3>
+          <DataTable rows={weeklyRows} columns={["employeeName", "period", "records", "checkedIn", "checkedOut", "workFromHome"]} />
+        </div>
+        <div className="attendance-report-card">
+          <h3>Monthly Report</h3>
+          <DataTable rows={monthlyRows} columns={["employeeName", "period", "records", "checkedIn", "checkedOut", "workFromHome"]} />
+        </div>
       </div>
       <DataTable rows={attendanceRows} columns={["employeeId", "employeeName", "date", "status", "checkIn", "checkOut"]} className="attendance-records" />
     </Panel>
   );
+}
+
+function getWeekReportPeriod(date) {
+  const start = new Date(date);
+  const mondayOffset = (start.getDay() + 6) % 7;
+  start.setDate(start.getDate() - mondayOffset);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return `${dateInputValue(start)} to ${dateInputValue(end)}`;
+}
+
+function buildAttendanceReportRows(records, periodType) {
+  const groups = new Map();
+
+  for (const record of records) {
+    const date = parseRecordDate(record.date);
+    if (!date) continue;
+    const period = periodType === "weekly"
+      ? getWeekReportPeriod(date)
+      : dateInputValue(date).slice(0, 7);
+    const key = `${record.employeeName || "Unknown"}|${period}`;
+    const current = groups.get(key) || {
+      id: key,
+      employeeName: record.employeeName || "Unknown",
+      period,
+      records: 0,
+      checkedIn: 0,
+      checkedOut: 0,
+      workFromHome: 0
+    };
+    const status = String(record.status || "").toLowerCase();
+    current.records += 1;
+    if (status.includes("work from home")) current.workFromHome += 1;
+    else if (status.includes("checked out")) current.checkedOut += 1;
+    else current.checkedIn += 1;
+    groups.set(key, current);
+  }
+
+  return [...groups.values()].sort((first, second) => (
+    second.period.localeCompare(first.period) || first.employeeName.localeCompare(second.employeeName)
+  ));
 }
 
 function getTotals(rows) {
