@@ -1429,7 +1429,7 @@ function EmployeeAttendancePanel({ store, commit, currentEmployee }) {
         <button className="secondary-button" onClick={() => markAttendance("Work From Home")} disabled={checkInDisabled || savingAttendance}>Work From Home</button>
         <button className="secondary-button checkout-button" onClick={checkoutAttendance} disabled={checkOutDisabled || savingAttendance}>Check Out</button>
       </div>
-      <DataTable rows={employeeAttendance} columns={["date", "status", "checkIn", "checkOut"]} />
+      <DataTable rows={employeeAttendance} columns={["date", "status", "checkIn", "checkOut"]} className="today-attendance-records" />
     </Panel>
   );
 }
