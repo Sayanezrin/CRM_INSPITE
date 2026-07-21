@@ -1561,12 +1561,19 @@ function EmployeeTable({ employees, commit, canDelete = false, className = "" })
 
   const updateEmployee = (updatedEmployee) => {
     if (!canDelete || !commit || !editingEmployee) return;
+    const previousId = editingEmployee.id;
+    const nextId = updatedEmployee.id;
     const previousEmail = editingEmployee.email?.toLowerCase();
     const nextEmail = updatedEmployee.email?.toLowerCase();
+    if (employees.some((employee) => employee.id !== previousId && String(employee.id) === String(nextId))) {
+      toast("Another employee already uses this ID.", "error");
+      return;
+    }
 
     commit((current) => {
       const existingLogin = (current.logins || []).find((login) => (
-        login.employeeId === updatedEmployee.id ||
+        login.employeeId === previousId ||
+        login.employeeId === nextId ||
         login.email?.toLowerCase() === previousEmail ||
         login.email?.toLowerCase() === nextEmail
       ));
@@ -1583,12 +1590,22 @@ function EmployeeTable({ employees, commit, canDelete = false, className = "" })
       return {
         ...current,
         employees: (current.employees || []).map((employee) => (
-          employee.id === updatedEmployee.id ? updatedEmployee : employee
+          employee.id === previousId ? updatedEmployee : employee
+        )),
+        leaves: (current.leaves || []).map((leave) => (
+          leave.employeeId === previousId ? { ...leave, employeeId: nextId, employeeName: updatedEmployee.name } : leave
+        )),
+        expenses: (current.expenses || []).map((expense) => (
+          expense.employeeId === previousId ? { ...expense, employeeId: nextId, employeeName: updatedEmployee.name } : expense
+        )),
+        attendance: (current.attendance || []).map((record) => (
+          record.employeeId === previousId ? { ...record, employeeId: nextId, employeeName: updatedEmployee.name } : record
         )),
         logins: [
           syncedLogin,
           ...(current.logins || []).filter((login) => (
             login.id !== existingLogin?.id &&
+            login.employeeId !== previousId &&
             login.employeeId !== updatedEmployee.id &&
             login.email?.toLowerCase() !== previousEmail &&
             login.email?.toLowerCase() !== nextEmail
@@ -1690,6 +1707,7 @@ function EmployeeTable({ employees, commit, canDelete = false, className = "" })
 
 function EmployeeEditModal({ employee, onClose, onSave }) {
   const [form, setForm] = useState({
+    id: employee.id || "",
     name: employee.name || "",
     email: employee.email || "",
     accessRole: employee.accessRole || "employee",
@@ -1716,13 +1734,14 @@ function EmployeeEditModal({ employee, onClose, onSave }) {
 
   const submitEdit = (event) => {
     event.preventDefault();
-    if (!form.name.trim() || !form.email.trim()) {
-      toast("Enter employee name and email.", "error");
+    if (!String(form.id).trim() || !form.name.trim() || !form.email.trim()) {
+      toast("Enter employee ID, name, and email.", "error");
       return;
     }
 
     onSave({
       ...employee,
+      id: String(form.id).trim(),
       name: form.name.trim(),
       email: form.email.trim().toLowerCase(),
       accessRole: form.accessRole,
@@ -1760,6 +1779,7 @@ function EmployeeEditModal({ employee, onClose, onSave }) {
           </button>
         </header>
         <form className="form-grid employee-form-grid employee-edit-form" onSubmit={submitEdit}>
+          <label>Employee ID<input value={form.id} onChange={(event) => updateField("id", event.target.value)} /></label>
           <label>Name<input value={form.name} onChange={(event) => updateField("name", event.target.value)} /></label>
           <label>Email<input type="email" value={form.email} onChange={(event) => updateField("email", event.target.value)} /></label>
           <label>Dashboard Access<select value={form.accessRole} onChange={(event) => updateField("accessRole", event.target.value)}><option value="employee">Employee</option><option value="hr">HR / Accountant</option><option value="admin">Admin</option></select></label>

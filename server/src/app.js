@@ -233,10 +233,54 @@ async function syncPortalUsers(models, payload) {
   });
 }
 
+function toAttendanceDocument(record, now = new Date()) {
+  return {
+    ...record,
+    id: String(record.id),
+    userEmail: String(record.userEmail || "").trim().toLowerCase(),
+    userName: record.employeeName || record.userName || "",
+    employeeName: record.employeeName || record.userName || "",
+    date: String(record.date || ""),
+    status: String(record.status || "Checked In"),
+    checkIn: String(record.checkIn || ""),
+    checkOut: String(record.checkOut || ""),
+    updatedAt: now
+  };
+}
+
+async function syncPortalAttendance(models, payload) {
+  if (!models || !Array.isArray(payload.attendance)) return;
+  const activeIds = [];
+  const now = new Date();
+
+  for (const record of payload.attendance) {
+    if (!record?.id) continue;
+    const savedRecord = toAttendanceDocument(record, now);
+    activeIds.push(savedRecord.id);
+    await models.Attendance.updateOne(
+      { id: savedRecord.id },
+      {
+        $set: savedRecord,
+        $setOnInsert: {
+          createdAt: now,
+          checkInAt: now,
+          checkOutAt: savedRecord.checkOut ? now : null
+        }
+      },
+      { upsert: true }
+    );
+  }
+
+  if (activeIds.length) {
+    await models.Attendance.deleteMany({ id: { $nin: activeIds } });
+  }
+}
+
 async function savePortalState(payload) {
   const models = await getModelsOrNull();
   if (models) {
     await syncPortalUsers(models, payload);
+    await syncPortalAttendance(models, payload);
     await models.PortalState.updateOne(
       { _id: "main" },
       { $set: { dataJson: JSON.stringify(payload), savedAt: new Date() } },
