@@ -1944,6 +1944,10 @@ function AttendanceTable({ attendance, title = "Attendance Records", className =
   const filteredAttendance = fromDate || toDate
     ? attendance.filter((record) => isWithinDateRange(record.date, fromDate, toDate))
     : attendance;
+  const attendanceRows = filteredAttendance.map((record) => ({
+    ...record,
+    employeeId: record.employeeId || record.id
+  }));
 
   return (
     <Panel title={title} className={className}>
@@ -1952,7 +1956,7 @@ function AttendanceTable({ attendance, title = "Attendance Records", className =
         <label>To<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>
         <button type="button" className="secondary-button" onClick={() => { setFromDate(""); setToDate(""); }}>Clear</button>
       </div>
-      <DataTable rows={filteredAttendance} columns={["id", "employeeName", "date", "status", "checkIn", "checkOut"]} className="attendance-records" />
+      <DataTable rows={attendanceRows} columns={["employeeId", "employeeName", "date", "status", "checkIn", "checkOut"]} className="attendance-records" />
     </Panel>
   );
 }
@@ -1988,7 +1992,7 @@ function FinancePanel({ store, canExport = false, className = "" }) {
       { title: "Expenses", columns: expenseCsvColumns, rows: periodExpenses },
       { title: "Ledger", columns: ledgerCsvColumns, rows: periodLedger },
       { title: "Leaves", columns: ["id", "employeeName", "type", "duration", "from", "to", "reason", "status", "appliedAt"], rows: periodLeaves },
-      { title: "Attendance", columns: ["id", "employeeName", "date", "status", "checkIn", "checkOut"], rows: periodAttendance }
+      { title: "Attendance", columns: ["employeeId", "employeeName", "date", "status", "checkIn", "checkOut"], rows: periodAttendance }
     ]);
   };
 
