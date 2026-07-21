@@ -162,7 +162,8 @@ async function apiJson(path, options = {}) {
     }
   });
   if (!response.ok) {
-    const error = new Error(`API request failed: ${response.status}`);
+    const payload = await response.json().catch(() => ({}));
+    const error = new Error(payload.error || payload.detail || `API request failed: ${response.status}`);
     error.status = response.status;
     throw error;
   }
@@ -588,13 +589,16 @@ function App() {
       const changedRecord = attendanceRecord || findChangedAttendanceRecord(base.attendance, next.attendance);
       if (!changedRecord) throw new Error("No attendance change found.");
 
-      writeState(next);
-      setStore(next);
-      savedLocal = true;
       const savedPortal = await apiJson("/api/portal/attendance-record", {
         method: "POST",
         body: JSON.stringify({ record: changedRecord })
       });
+      if (savedPortal?.storage && savedPortal.storage !== "mongodb") {
+        throw new Error("Backend storage is not connected to MongoDB yet. Attendance was not saved.");
+      }
+      writeState(next);
+      setStore(next);
+      savedLocal = true;
       if (hasPortalData(savedPortal)) {
         const nextPortal = { ...seedState, ...savedPortal, logins: savedPortal.logins || [] };
         writeState(nextPortal);
@@ -603,8 +607,12 @@ function App() {
       window.setTimeout(refreshPortalState, 250);
       return true;
     } catch (error) {
-      if (!savedLocal) commit(updater);
-      toast(error.message || "Attendance saved on this device only. Admin can see it after backend storage reconnects.", "error");
+      if (!savedLocal && !attendanceRecord) commit(updater);
+      if (error.status === 401 || error.status === 403) {
+        toast("Backend rejected this login session. Please sign out and sign in again, then mark attendance.", "error");
+      } else {
+        toast(error.message || "Attendance was not saved to the shared database. Please try again.", "error");
+      }
       return false;
     }
   };
