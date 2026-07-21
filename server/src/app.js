@@ -299,9 +299,15 @@ async function savePortalAttendanceRecord(record) {
     const now = new Date();
     const existing = await models.Attendance.findOne({ id: String(record.id) }).lean();
     const { _id, createdAt, ...existingRecord } = existing || {};
+    const {
+      _id: incomingId,
+      createdAt: incomingCreatedAt,
+      __v,
+      ...incomingRecord
+    } = record;
     const savedRecord = {
       ...existingRecord,
-      ...record,
+      ...incomingRecord,
       id: String(record.id),
       userEmail: String(record.userEmail || existing?.userEmail || "").trim().toLowerCase(),
       userName: record.employeeName || record.userName || existing?.userName || "",
