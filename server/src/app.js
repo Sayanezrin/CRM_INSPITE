@@ -194,6 +194,7 @@ function toPortalAttendanceRecord(record) {
     id: String(record.id || record._id),
     employeeId: record.employeeId,
     employeeName: record.employeeName || record.userName || "",
+    userEmail: record.userEmail || "",
     date: record.date || "",
     status: record.status === "In" ? "Checked In" : record.status || "Checked In",
     checkIn: record.checkIn || formatAttendanceTime(record.checkInAt),

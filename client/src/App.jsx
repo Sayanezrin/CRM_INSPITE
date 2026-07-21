@@ -577,13 +577,13 @@ function App() {
     });
   };
 
-  const commitAttendance = async (updater) => {
+  const commitAttendance = async (updater, attendanceRecord) => {
     let savedLocal = false;
     try {
       const latest = await apiJson("/api/portal");
       const base = hasPortalData(latest) ? { ...seedState, ...latest, logins: latest.logins || [] } : readState();
       const next = typeof updater === "function" ? updater(base) : updater;
-      const changedRecord = findChangedAttendanceRecord(base.attendance, next.attendance);
+      const changedRecord = attendanceRecord || findChangedAttendanceRecord(base.attendance, next.attendance);
       if (!changedRecord) throw new Error("No attendance change found.");
 
       writeState(next);
@@ -1495,7 +1495,7 @@ function EmployeeAttendancePanel({ store, commit, currentEmployee }) {
         const attendance = (current.attendance || []).filter((item) => item.id !== record.id);
         attendance.unshift(record);
         return { ...current, attendance };
-      });
+      }, record);
       if (saved !== false) toast(status === "Work From Home" ? "Work from home marked." : "Check-in marked.");
     } catch (error) {
       toast(error.message || "Could not verify your check-in location.", "error");
@@ -1507,19 +1507,23 @@ function EmployeeAttendancePanel({ store, commit, currentEmployee }) {
   const checkoutAttendance = async () => {
     if (checkOutDisabled || savingAttendance) return;
     const now = new Date().toTimeString().slice(0, 5);
+    const updatedRecord = {
+      ...activeAttendance,
+      employeeId: currentEmployee.id,
+      employeeName: currentEmployee.name,
+      userEmail: currentEmployee.email,
+      status: "Checked Out",
+      checkOut: now
+    };
     setSavingAttendance(true);
     try {
       const saved = await commit((current) => {
         const existingIndex = (current.attendance || []).findIndex((item) => item.id === activeAttendance.id);
         if (existingIndex < 0) return current;
         const attendance = [...current.attendance];
-        attendance[existingIndex] = {
-          ...attendance[existingIndex],
-          status: "Checked Out",
-          checkOut: now
-        };
+        attendance[existingIndex] = updatedRecord;
         return { ...current, attendance };
-      });
+      }, updatedRecord);
       if (saved !== false) toast("Check-out marked.");
     } finally {
       setSavingAttendance(false);
