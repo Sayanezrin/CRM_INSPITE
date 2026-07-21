@@ -506,6 +506,28 @@ function App() {
     });
   };
 
+  const commitAttendance = async (updater) => {
+    let savedLocal = false;
+    try {
+      const latest = await apiJson("/api/portal");
+      const base = hasPortalData(latest) ? { ...seedState, ...latest, logins: latest.logins || [] } : readState();
+      const next = typeof updater === "function" ? updater(base) : updater;
+      writeState(next);
+      setStore(next);
+      savedLocal = true;
+      await apiJson("/api/portal", {
+        method: "PUT",
+        body: JSON.stringify(next)
+      });
+      window.setTimeout(refreshPortalState, 250);
+      return true;
+    } catch {
+      if (!savedLocal) commit(updater);
+      toast("Attendance saved on this device only. Admin can see it after backend storage reconnects.", "error");
+      return false;
+    }
+  };
+
   if (!session) {
     return <><LoginScreen store={store} onLogin={(nextSession) => { writeSession(nextSession); setSession(nextSession); setActivePage("home"); }} /><ToastHost /></>;
   }
@@ -519,7 +541,7 @@ function App() {
       <Sidebar session={session} activePage={activePage} onPageChange={setActivePage} onLogout={() => { writeSession(null); setSession(null); }} />
       <main className="portal-main">
         <Header session={session} store={store} activePage={activePage} apiStatus={apiStatus} />
-        <RolePage session={session} activePage={activePage} store={store} commit={commit} />
+        <RolePage session={session} activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} />
       </main>
       <ToastHost />
     </div>
@@ -751,39 +773,39 @@ function Header({ session, store, activePage, apiStatus }) {
   );
 }
 
-function RolePage({ session, activePage, store, commit }) {
-  if (session.role === "admin") return <AdminPage activePage={activePage} store={store} commit={commit} session={session} />;
-  if (session.role === "hr") return <HrPage activePage={activePage} store={store} commit={commit} session={session} />;
-  return <EmployeePage activePage={activePage} store={store} commit={commit} session={session} />;
+function RolePage({ session, activePage, store, commit, commitAttendance }) {
+  if (session.role === "admin") return <AdminPage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} session={session} />;
+  if (session.role === "hr") return <HrPage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} session={session} />;
+  return <EmployeePage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} session={session} />;
 }
 
-function AdminPage({ activePage, store, commit, session }) {
+function AdminPage({ activePage, store, commit, commitAttendance, session }) {
   if (activePage === "logins") return <DashboardGrid><AddLoginPanel commit={commit} /><LoginAccessTable logins={store.logins || []} commit={commit} className="full-row-panel" /></DashboardGrid>;
   if (activePage === "employees") return <DashboardGrid><AddEmployeePanel commit={commit} /><EmployeeTable employees={store.employees} commit={commit} canDelete className="full-row-panel" /></DashboardGrid>;
   if (activePage === "finance") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} createdBy="Admin" title="Add Debit Expense" /><FinancePanel store={store} canExport className="full-row-panel" /><LedgerTable store={store} className="full-row-panel" /></DashboardGrid>;
   if (activePage === "leave") return <DashboardGrid><ApprovalPanel title="Leave Applications" items={store.leaves} kind="leaves" commit={commit} /><LeaveTable leaves={store.leaves} /></DashboardGrid>;
   if (activePage === "expenses") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} /><ApprovalPanel title="Expense Approvals" items={store.expenses} kind="expenses" commit={commit} className="full-row-panel" /><ExpenseTable expenses={store.expenses} className="full-row-panel" /></DashboardGrid>;
-  if (activePage === "attendance") return <AttendancePage store={store} commit={commit} session={session} />;
+  if (activePage === "attendance") return <AttendancePage store={store} commit={commit} commitAttendance={commitAttendance} session={session} />;
   return <AdminHome store={store} commit={commit} />;
 }
 
-function HrPage({ activePage, store, commit, session }) {
+function HrPage({ activePage, store, commit, commitAttendance, session }) {
   if (activePage === "employees") return <DashboardGrid><EmployeeTable employees={store.employees} /></DashboardGrid>;
   if (activePage === "leave") return <DashboardGrid><LeaveTable leaves={store.leaves} /></DashboardGrid>;
   if (activePage === "expenses") return <DashboardGrid><ApprovalPanel title="Expense Approval Queue" items={store.expenses} kind="expenses" commit={commit} /><ExpenseTable expenses={store.expenses} /></DashboardGrid>;
-  if (activePage === "attendance") return <AttendancePage store={store} commit={commit} session={session} />;
+  if (activePage === "attendance") return <AttendancePage store={store} commit={commit} commitAttendance={commitAttendance} session={session} />;
   if (activePage === "finance") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} createdBy="HR" title="Add Debit Expense" /><FinancePanel store={store} canExport className="full-row-panel" /><LedgerTable store={store} className="full-row-panel" /></DashboardGrid>;
   return <DashboardGrid><FinancePanel store={store} canExport className="full-row-panel" /><ApprovalPanel title="Expense Approval Queue" items={store.expenses} kind="expenses" commit={commit} className="full-row-panel" /></DashboardGrid>;
 }
 
-function EmployeePage({ activePage, store, commit, session }) {
+function EmployeePage({ activePage, store, commit, commitAttendance, session }) {
   const currentEmployee = getEmployeeForSession(store, session);
   if (!currentEmployee) return <EmployeeProfileMissing session={session} />;
   if (activePage === "employees") return <DashboardGrid><EmployeeProfilePanel employee={currentEmployee} /></DashboardGrid>;
   if (activePage === "leave") return <DashboardGrid><LeaveFormPanel store={store} commit={commit} currentEmployee={currentEmployee} /><LeaveTable leaves={store.leaves.filter((item) => item.employeeId === currentEmployee.id)} /></DashboardGrid>;
   if (activePage === "expenses") return <DashboardGrid><ExpenseFormPanel store={store} commit={commit} currentEmployee={currentEmployee} /><ExpenseTable expenses={store.expenses.filter((item) => item.employeeId === currentEmployee.id)} /></DashboardGrid>;
-  if (activePage === "attendance") return <DashboardGrid><EmployeeAttendancePanel store={store} commit={commit} currentEmployee={currentEmployee} /></DashboardGrid>;
-  return <EmployeeHome store={store} commit={commit} currentEmployee={currentEmployee} />;
+  if (activePage === "attendance") return <DashboardGrid><EmployeeAttendancePanel store={store} commit={commitAttendance} currentEmployee={currentEmployee} /></DashboardGrid>;
+  return <EmployeeHome store={store} commit={commit} commitAttendance={commitAttendance} currentEmployee={currentEmployee} />;
 }
 
 function EmployeeProfilePanel({ employee }) {
@@ -864,12 +886,12 @@ function getEmployeeForSession(store, session) {
   };
 }
 
-function AttendancePage({ store, commit, session }) {
+function AttendancePage({ store, commit, commitAttendance, session }) {
   const currentEmployee = getEmployeeForSession(store, session);
   return (
     <DashboardGrid>
       {currentEmployee ? (
-        <EmployeeAttendancePanel store={store} commit={commit} currentEmployee={currentEmployee} />
+        <EmployeeAttendancePanel store={store} commit={commitAttendance || commit} currentEmployee={currentEmployee} />
       ) : (
         <Panel title="My Attendance" className="full-row-panel">
           <p className="empty-note">No employee profile is linked to {session.email}. Add this email in Employee Directory to mark attendance.</p>
@@ -901,7 +923,7 @@ function AdminHome({ store, commit }) {
   );
 }
 
-function EmployeeHome({ store, commit, currentEmployee }) {
+function EmployeeHome({ store, commit, commitAttendance, currentEmployee }) {
   const leaves = store.leaves.filter((item) => item.employeeId === currentEmployee.id);
   const expenses = store.expenses.filter((item) => item.employeeId === currentEmployee.id);
   return (
@@ -913,7 +935,7 @@ function EmployeeHome({ store, commit, currentEmployee }) {
           <Metric label="Approved Amount" value={money(expenses.filter((item) => item.status === "Approved").reduce((sum, item) => sum + Number(item.amount), 0))} />
         </div>
       </Panel>
-      <EmployeeAttendancePanel store={store} commit={commit} currentEmployee={currentEmployee} />
+      <EmployeeAttendancePanel store={store} commit={commitAttendance || commit} currentEmployee={currentEmployee} />
       <LeaveFormPanel store={store} commit={commit} currentEmployee={currentEmployee} />
       <ExpenseFormPanel store={store} commit={commit} currentEmployee={currentEmployee} />
     </DashboardGrid>
@@ -1234,13 +1256,14 @@ function AdminExpenseFormPanel({ store, commit, createdBy = "Admin", title = "Ad
 }
 
 function EmployeeAttendancePanel({ store, commit, currentEmployee }) {
+  const [savingAttendance, setSavingAttendance] = useState(false);
   const employeeAttendance = store.attendance.filter((item) => item.employeeId === currentEmployee.id);
   const activeAttendance = employeeAttendance.find((item) => item.date === today() && item.status !== "Checked Out" && !item.checkOut);
   const checkInDisabled = Boolean(activeAttendance);
   const checkOutDisabled = !activeAttendance;
 
-  const markAttendance = (status) => {
-    if (checkInDisabled) return;
+  const markAttendance = async (status) => {
+    if (checkInDisabled || savingAttendance) return;
     const record = {
       id: uid("ATT"),
       employeeId: currentEmployee.id,
@@ -1250,37 +1273,47 @@ function EmployeeAttendancePanel({ store, commit, currentEmployee }) {
       checkIn: new Date().toTimeString().slice(0, 5),
       checkOut: ""
     };
-    commit((current) => {
-      const attendance = [...current.attendance];
-      attendance.unshift(record);
-      return { ...current, attendance };
-    });
-    toast(status === "Work From Home" ? "Work from home marked." : "Check-in marked.");
+    setSavingAttendance(true);
+    try {
+      const saved = await commit((current) => {
+        const attendance = (current.attendance || []).filter((item) => item.id !== record.id);
+        attendance.unshift(record);
+        return { ...current, attendance };
+      });
+      if (saved !== false) toast(status === "Work From Home" ? "Work from home marked." : "Check-in marked.");
+    } finally {
+      setSavingAttendance(false);
+    }
   };
 
-  const checkoutAttendance = () => {
-    if (checkOutDisabled) return;
+  const checkoutAttendance = async () => {
+    if (checkOutDisabled || savingAttendance) return;
     const now = new Date().toTimeString().slice(0, 5);
-    commit((current) => {
-      const existingIndex = current.attendance.findIndex((item) => item.id === activeAttendance.id);
-      if (existingIndex < 0) return current;
-      const attendance = [...current.attendance];
-      attendance[existingIndex] = {
-        ...attendance[existingIndex],
-        status: "Checked Out",
-        checkOut: now
-      };
-      return { ...current, attendance };
-    });
-    toast("Check-out marked.");
+    setSavingAttendance(true);
+    try {
+      const saved = await commit((current) => {
+        const existingIndex = (current.attendance || []).findIndex((item) => item.id === activeAttendance.id);
+        if (existingIndex < 0) return current;
+        const attendance = [...current.attendance];
+        attendance[existingIndex] = {
+          ...attendance[existingIndex],
+          status: "Checked Out",
+          checkOut: now
+        };
+        return { ...current, attendance };
+      });
+      if (saved !== false) toast("Check-out marked.");
+    } finally {
+      setSavingAttendance(false);
+    }
   };
 
   return (
     <Panel title="Today Attendance">
       <div className="attendance-actions">
-        <button className="primary-button" onClick={() => markAttendance("Checked In")} disabled={checkInDisabled}>Check In</button>
-        <button className="secondary-button" onClick={() => markAttendance("Work From Home")} disabled={checkInDisabled}>Work From Home</button>
-        <button className="secondary-button checkout-button" onClick={checkoutAttendance} disabled={checkOutDisabled}>Check Out</button>
+        <button className="primary-button" onClick={() => markAttendance("Checked In")} disabled={checkInDisabled || savingAttendance}>Check In</button>
+        <button className="secondary-button" onClick={() => markAttendance("Work From Home")} disabled={checkInDisabled || savingAttendance}>Work From Home</button>
+        <button className="secondary-button checkout-button" onClick={checkoutAttendance} disabled={checkOutDisabled || savingAttendance}>Check Out</button>
       </div>
       <DataTable rows={employeeAttendance} columns={["date", "status", "checkIn", "checkOut"]} />
     </Panel>
