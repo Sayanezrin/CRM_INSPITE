@@ -373,6 +373,39 @@ button:disabled {
   min-width: 0;
 }
 
+.install-app-notice {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border: 1px solid #bad0ef;
+  border-radius: 8px;
+  background: #eef6ff;
+  color: #10233f;
+}
+
+.install-app-notice div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.install-app-notice strong {
+  font-size: 15px;
+}
+
+.install-app-notice span {
+  color: #526178;
+  font-size: 13px;
+}
+
+.install-app-notice .primary-button {
+  min-height: 38px;
+  padding: 0 14px;
+}
+
 .panel:nth-child(2n + 1):last-child,
 .panel:has(.data-table) {
   grid-column: span 2;
@@ -936,6 +969,15 @@ button:disabled {
   .panel {
     padding: 14px;
     gap: 12px;
+  }
+
+  .install-app-notice {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .install-app-notice .primary-button {
+    grid-column: 1 / -1;
+    width: 100%;
   }
 
   .form-grid,

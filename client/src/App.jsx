@@ -77,6 +77,10 @@ function writeSession(value) {
   }
 }
 
+function isInstalledWebApp() {
+  return window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator.standalone === true;
+}
+
 function readLocalPasswords() {
   try {
     const saved = window.localStorage.getItem(LOCAL_PASSWORDS_KEY);
@@ -483,7 +487,18 @@ function App() {
   const [session, setSession] = useState(readSession);
   const [activePage, setActivePage] = useState("home");
   const [apiStatus, setApiStatus] = useState("connecting");
+  const [installPrompt, setInstallPrompt] = useState(null);
   const healthFailuresRef = useRef(0);
+
+  useEffect(() => {
+    const handleInstallPrompt = (event) => {
+      event.preventDefault();
+      setInstallPrompt(event);
+    };
+
+    window.addEventListener("beforeinstallprompt", handleInstallPrompt);
+    return () => window.removeEventListener("beforeinstallprompt", handleInstallPrompt);
+  }, []);
 
   const refreshBackendHealth = () => fetch(`${API_URL}/api/health/mongodb`)
     .then((response) => response.ok ? response.json() : Promise.reject(new Error(`Health check failed: ${response.status}`)))
@@ -605,10 +620,46 @@ function App() {
       <Sidebar session={session} activePage={activePage} onPageChange={setActivePage} onLogout={() => { writeSession(null); setSession(null); }} />
       <main className="portal-main">
         <Header session={session} store={store} activePage={activePage} apiStatus={apiStatus} />
+        {session.role === "employee" && <InstallAppNotice installPrompt={installPrompt} onPromptUsed={() => setInstallPrompt(null)} />}
         <RolePage session={session} activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} />
       </main>
       <ToastHost />
     </div>
+  );
+}
+
+function InstallAppNotice({ installPrompt, onPromptUsed }) {
+  const [visible, setVisible] = useState(() => !isInstalledWebApp());
+  const isIos = /iphone|ipad|ipod/i.test(window.navigator.userAgent || "");
+
+  if (!visible) return null;
+
+  const installApp = async () => {
+    if (!installPrompt) {
+      toast(isIos ? "Tap Share, then Add to Home Screen." : "Open browser menu and choose Add to Home screen.", "error");
+      return;
+    }
+
+    installPrompt.prompt();
+    await installPrompt.userChoice.catch(() => null);
+    onPromptUsed();
+    setVisible(false);
+  };
+
+  return (
+    <section className="install-app-notice" aria-label="Install mobile app notice">
+      <div>
+        <strong>Download Inspite People on your phone</strong>
+        <span>{isIos ? "Tap Share, then Add to Home Screen." : "Install it as a mobile web app for faster check-in."}</span>
+      </div>
+      <button type="button" className="primary-button" onClick={installApp}>{installPrompt ? "Install App" : "How to Install"}</button>
+      <button type="button" className="icon-action" aria-label="Dismiss install notice" title="Dismiss" onClick={() => setVisible(false)}>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M6 6l12 12" />
+          <path d="M18 6L6 18" />
+        </svg>
+      </button>
+    </section>
   );
 }
 
