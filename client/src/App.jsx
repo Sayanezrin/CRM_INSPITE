@@ -1013,7 +1013,7 @@ function AttendancePage({ store, commit, commitAttendance, session }) {
           <p className="empty-note">No employee profile is linked to {session.email}. Add this email in Employee Directory to mark attendance.</p>
         </Panel>
       )}
-      <AttendanceTable attendance={store.attendance} className="full-row-panel" />
+      <AttendanceTable attendance={store.attendance} employees={store.employees} className="full-row-panel" />
     </DashboardGrid>
   );
 }
@@ -1034,7 +1034,7 @@ function AdminHome({ store, commit }) {
       </Panel>
       <ApprovalPanel title="Leave Applications" items={store.leaves.filter((item) => item.status === "Pending")} kind="leaves" commit={commit} className="full-row-panel" />
       <ApprovalPanel title="Expense Approvals" items={store.expenses.filter((item) => item.status === "Pending")} kind="expenses" commit={commit} className="full-row-panel" />
-      <AttendanceTable attendance={store.attendance.slice(0, 5)} title="Recent Attendance" className="full-row-panel" />
+      <AttendanceTable attendance={store.attendance.slice(0, 5)} employees={store.employees} title="Recent Attendance" className="full-row-panel" />
     </DashboardGrid>
   );
 }
@@ -2042,11 +2042,14 @@ function ReceiptPreviewModal({ receipt, onClose }) {
   );
 }
 
-function AttendanceTable({ attendance, title = "Attendance Records", className = "" }) {
+function AttendanceTable({ attendance, employees = [], title = "Attendance Records", className = "" }) {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [employeeName, setEmployeeName] = useState("");
-  const employeeNames = [...new Set(attendance.map((record) => record.employeeName).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const employeeNames = [...new Set([
+    ...employees.map((employee) => employee.name).filter(Boolean),
+    ...attendance.map((record) => record.employeeName).filter(Boolean)
+  ])].sort((a, b) => a.localeCompare(b));
   const filteredAttendance = attendance.filter((record) => (
     (!fromDate && !toDate ? true : isWithinDateRange(record.date, fromDate, toDate))
     && (!employeeName || record.employeeName === employeeName)
