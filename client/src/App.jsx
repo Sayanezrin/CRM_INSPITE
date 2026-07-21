@@ -986,12 +986,25 @@ function AddLoginPanel({ commit }) {
 }
 
 function LoginAccessTable({ logins, commit, className = "" }) {
+  const [editingLogin, setEditingLogin] = useState(null);
+
   const deleteLogin = (loginId) => {
     commit((current) => ({
       ...current,
       logins: (current.logins || []).filter((login) => login.id !== loginId)
     }));
     toast("Login access deleted.");
+  };
+
+  const updateLogin = (updatedLogin) => {
+    commit((current) => ({
+      ...current,
+      logins: (current.logins || []).map((login) => (
+        login.id === updatedLogin.id ? updatedLogin : login
+      ))
+    }));
+    setEditingLogin(null);
+    toast("Login access updated.");
   };
 
   if (!logins.length) return <Panel title="Login Access" className={className}><p className="empty-note">No login access added yet.</p></Panel>;
@@ -1004,7 +1017,7 @@ function LoginAccessTable({ logins, commit, className = "" }) {
           <span>email</span>
           <span>dashboard</span>
           <span>status</span>
-          <span>delete</span>
+          <span>action</span>
         </div>
         {logins.map((login) => (
           <div className="data-row" key={login.id}>
@@ -1012,7 +1025,13 @@ function LoginAccessTable({ logins, commit, className = "" }) {
             <span>{login.email}</span>
             <span>{roles[login.accessRole]?.title || "Employee"}</span>
             <span>{login.status}</span>
-            <span>
+            <span className="employee-action-buttons">
+              <button className="icon-action" type="button" aria-label={`Edit ${login.email}`} title="Edit login" onClick={() => setEditingLogin(login)}>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                </svg>
+              </button>
               <button className="icon-action danger" type="button" aria-label={`Delete ${login.email}`} title="Delete login" onClick={() => deleteLogin(login.id)}>
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M4 7h16" />
@@ -1026,7 +1045,72 @@ function LoginAccessTable({ logins, commit, className = "" }) {
           </div>
         ))}
       </div>
+      {editingLogin ? (
+        <LoginEditModal
+          login={editingLogin}
+          onClose={() => setEditingLogin(null)}
+          onSave={updateLogin}
+        />
+      ) : null}
     </Panel>
+  );
+}
+
+function LoginEditModal({ login, onClose, onSave }) {
+  const [form, setForm] = useState({
+    name: login.name || "",
+    email: login.email || "",
+    accessRole: login.accessRole || "employee",
+    status: login.status || "Active"
+  });
+
+  const updateField = (field, value) => {
+    setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const submitEdit = (event) => {
+    event.preventDefault();
+    if (!form.name.trim() || !form.email.trim()) {
+      toast("Enter login name and email.", "error");
+      return;
+    }
+
+    onSave({
+      ...login,
+      name: form.name.trim(),
+      email: form.email.trim().toLowerCase(),
+      accessRole: form.accessRole,
+      status: form.status || "Active"
+    });
+  };
+
+  return (
+    <div className="receipt-modal-backdrop" role="presentation" onClick={onClose}>
+      <section className="receipt-modal login-edit-modal" role="dialog" aria-modal="true" aria-label="Edit login access" onClick={(event) => event.stopPropagation()}>
+        <header>
+          <div>
+            <h2>Edit Login Access</h2>
+            <p>{login.email}</p>
+          </div>
+          <button type="button" className="icon-action" aria-label="Close login edit" title="Close" onClick={onClose}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 6l12 12" />
+              <path d="M18 6L6 18" />
+            </svg>
+          </button>
+        </header>
+        <form className="form-grid employee-edit-form" onSubmit={submitEdit}>
+          <label>Name<input value={form.name} onChange={(event) => updateField("name", event.target.value)} /></label>
+          <label>Email<input type="email" value={form.email} onChange={(event) => updateField("email", event.target.value)} /></label>
+          <label>Dashboard Access<select value={form.accessRole} onChange={(event) => updateField("accessRole", event.target.value)}><option value="employee">Employee</option><option value="hr">HR / Accountant</option><option value="admin">Admin</option></select></label>
+          <label>Status<select value={form.status} onChange={(event) => updateField("status", event.target.value)}><option value="Active">Active</option><option value="Inactive">Inactive</option></select></label>
+          <div className="modal-form-actions">
+            <button type="button" className="secondary-button" onClick={onClose}>Cancel</button>
+            <button type="submit" className="primary-button">Save Login</button>
+          </div>
+        </form>
+      </section>
+    </div>
   );
 }
 
