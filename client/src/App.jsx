@@ -22,7 +22,7 @@ const seedState = {
 };
 
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return dateInputValue(new Date());
 }
 
 function uid(prefix) {
@@ -247,6 +247,7 @@ function escapeHtml(value) {
 
 function parseRecordDate(value) {
   if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : new Date(value);
   const raw = String(value).trim();
   const yyyymmdd = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (yyyymmdd) {
