@@ -298,7 +298,7 @@ async function savePortalAttendanceRecord(record) {
   if (models) {
     const now = new Date();
     const existing = await models.Attendance.findOne({ id: String(record.id) }).lean();
-    const { _id, ...existingRecord } = existing || {};
+    const { _id, createdAt, ...existingRecord } = existing || {};
     const savedRecord = {
       ...existingRecord,
       ...record,
