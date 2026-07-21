@@ -593,6 +593,11 @@ button:disabled {
   overflow: auto;
 }
 
+.login-records {
+  max-height: 360px;
+  overflow: auto;
+}
+
 .attendance-records {
   max-height: 300px;
   overflow: auto;
