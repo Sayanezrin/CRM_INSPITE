@@ -834,6 +834,7 @@ function EmployeeProfilePanel({ employee }) {
     ["Salary", money(employee.salary)],
     ["Date of Joining", employee.joinedAt],
     ["Birthday", employee.birthday],
+    ["Blood Group", employee.bloodGroup],
     ["Mobile", employee.mobile],
     ["Alternative Number", employee.alternativeNumber],
     ["Aadhaar Number", employee.aadhaar],
@@ -1139,6 +1140,7 @@ function AddEmployeePanel({ commit }) {
     salary: "",
     joinedAt: "",
     birthday: "",
+    bloodGroup: "",
     address: "",
     mobile: "",
     alternativeNumber: "",
@@ -1167,6 +1169,7 @@ function AddEmployeePanel({ commit }) {
       salary: Number(employee.salary || 0),
       joinedAt: employee.joinedAt,
       birthday: employee.birthday,
+      bloodGroup: employee.bloodGroup,
       address: employee.address.trim(),
       mobile: employee.mobile.trim(),
       alternativeNumber: employee.alternativeNumber.trim(),
@@ -1215,6 +1218,17 @@ function AddEmployeePanel({ commit }) {
         <input type="number" placeholder="Salary" value={employee.salary} onChange={(event) => setEmployee({ ...employee, salary: event.target.value })} />
         <label>Date of joining<input type="date" value={dateInputValue(employee.joinedAt)} onChange={(event) => setEmployee({ ...employee, joinedAt: event.target.value })} /></label>
         <label>Birthday<input type="date" value={dateInputValue(employee.birthday)} onChange={(event) => setEmployee({ ...employee, birthday: event.target.value })} /></label>
+        <select value={employee.bloodGroup} onChange={(event) => setEmployee({ ...employee, bloodGroup: event.target.value })}>
+          <option value="">Blood group</option>
+          <option value="A+">A+</option>
+          <option value="A-">A-</option>
+          <option value="B+">B+</option>
+          <option value="B-">B-</option>
+          <option value="AB+">AB+</option>
+          <option value="AB-">AB-</option>
+          <option value="O+">O+</option>
+          <option value="O-">O-</option>
+        </select>
         <input placeholder="Mobile number" value={employee.mobile} onChange={(event) => setEmployee({ ...employee, mobile: event.target.value })} />
         <input placeholder="Alternative number" value={employee.alternativeNumber} onChange={(event) => setEmployee({ ...employee, alternativeNumber: event.target.value })} />
         <input placeholder="Aadhaar number" value={employee.aadhaar} onChange={(event) => setEmployee({ ...employee, aadhaar: event.target.value })} />
@@ -1539,7 +1553,7 @@ function Metric({ label, value }) {
   return <div className="metric"><span>{label}</span><strong>{value}</strong></div>;
 }
 
-const employeeColumns = ["id", "name", "email", "accessRole", "department", "role", "salary", "joinedAt", "birthday", "mobile", "alternativeNumber", "aadhaar", "pan", "uan", "experience", "qualification", "college", "address", "status"];
+const employeeColumns = ["id", "name", "email", "accessRole", "department", "role", "salary", "joinedAt", "birthday", "bloodGroup", "mobile", "alternativeNumber", "aadhaar", "pan", "uan", "experience", "qualification", "college", "address", "status"];
 
 function EmployeeTable({ employees, commit, canDelete = false, className = "" }) {
   const [editingEmployee, setEditingEmployee] = useState(null);
@@ -1640,6 +1654,7 @@ function EmployeeTable({ employees, commit, canDelete = false, className = "" })
             <span>salary</span>
             <span>joining</span>
             <span>birthday</span>
+            <span>blood group</span>
             <span>mobile</span>
             <span>alt number</span>
             <span>Aadhaar</span>
@@ -1663,6 +1678,7 @@ function EmployeeTable({ employees, commit, canDelete = false, className = "" })
               <span>{money(employee.salary)}</span>
               <span>{employee.joinedAt || "--"}</span>
               <span>{employee.birthday || "--"}</span>
+              <span>{employee.bloodGroup || "--"}</span>
               <span>{employee.mobile || "--"}</span>
               <span>{employee.alternativeNumber || "--"}</span>
               <span>{employee.aadhaar || "--"}</span>
@@ -1716,6 +1732,7 @@ function EmployeeEditModal({ employee, onClose, onSave }) {
     salary: employee.salary ?? "",
     joinedAt: employee.joinedAt || "",
     birthday: employee.birthday || "",
+    bloodGroup: employee.bloodGroup || "",
     mobile: employee.mobile || "",
     alternativeNumber: employee.alternativeNumber || "",
     aadhaar: employee.aadhaar || "",
@@ -1750,6 +1767,7 @@ function EmployeeEditModal({ employee, onClose, onSave }) {
       salary: Number(form.salary || 0),
       joinedAt: form.joinedAt.trim(),
       birthday: form.birthday.trim(),
+      bloodGroup: form.bloodGroup,
       mobile: form.mobile.trim(),
       alternativeNumber: form.alternativeNumber.trim(),
       aadhaar: form.aadhaar.trim(),
@@ -1788,6 +1806,7 @@ function EmployeeEditModal({ employee, onClose, onSave }) {
           <label>Salary<input type="number" min="0" value={form.salary} onChange={(event) => updateField("salary", event.target.value)} /></label>
           <label>Date of Joining<input type="date" value={dateInputValue(form.joinedAt)} onChange={(event) => updateField("joinedAt", event.target.value)} /></label>
           <label>Birthday<input type="date" value={dateInputValue(form.birthday)} onChange={(event) => updateField("birthday", event.target.value)} /></label>
+          <label>Blood Group<select value={form.bloodGroup} onChange={(event) => updateField("bloodGroup", event.target.value)}><option value="">Select blood group</option><option value="A+">A+</option><option value="A-">A-</option><option value="B+">B+</option><option value="B-">B-</option><option value="AB+">AB+</option><option value="AB-">AB-</option><option value="O+">O+</option><option value="O-">O-</option></select></label>
           <label>Mobile<input value={form.mobile} onChange={(event) => updateField("mobile", event.target.value)} /></label>
           <label>Alternative Number<input value={form.alternativeNumber} onChange={(event) => updateField("alternativeNumber", event.target.value)} /></label>
           <label>Aadhaar Number<input value={form.aadhaar} onChange={(event) => updateField("aadhaar", event.target.value)} /></label>
