@@ -1367,6 +1367,7 @@ function EmployeeAttendancePanel({ store, commit, currentEmployee }) {
       id: uid("ATT"),
       employeeId: currentEmployee.id,
       employeeName: currentEmployee.name,
+      userEmail: currentEmployee.email,
       date: today(),
       status,
       checkIn: new Date().toTimeString().slice(0, 5),

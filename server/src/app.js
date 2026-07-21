@@ -165,7 +165,9 @@ async function getPortalState() {
   const models = await getModelsOrNull();
   if (models) {
     const document = await models.PortalState.findOne({ _id: "main" }).lean();
-    return document?.dataJson ? JSON.parse(document.dataJson) : null;
+    const portal = document?.dataJson ? JSON.parse(document.dataJson) : null;
+    const attendance = await models.Attendance.find({}).sort({ date: -1, updatedAt: -1, _id: -1 }).lean();
+    return { ...normalizePortalState(portal), attendance: attendance.map(toPortalAttendanceRecord) };
   }
   return readPortalFile();
 }
@@ -176,6 +178,26 @@ function normalizePortalState(payload) {
     ...(payload || {}),
     logins: payload?.logins || [],
     attendance: payload?.attendance || []
+  };
+}
+
+function formatAttendanceTime(value) {
+  if (!value) return "";
+  if (typeof value === "string" && /^\d{2}:\d{2}$/.test(value)) return value;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toTimeString().slice(0, 5);
+}
+
+function toPortalAttendanceRecord(record) {
+  return {
+    id: String(record.id || record._id),
+    employeeId: record.employeeId,
+    employeeName: record.employeeName || record.userName || "",
+    date: record.date || "",
+    status: record.status === "In" ? "Checked In" : record.status || "Checked In",
+    checkIn: record.checkIn || formatAttendanceTime(record.checkInAt),
+    checkOut: record.checkOut || formatAttendanceTime(record.checkOutAt)
   };
 }
 
@@ -227,6 +249,35 @@ async function savePortalState(payload) {
 }
 
 async function savePortalAttendanceRecord(record) {
+  const models = await getModelsOrNull();
+  if (models) {
+    const now = new Date();
+    const existing = await models.Attendance.findOne({ id: String(record.id) }).lean();
+    const { _id, ...existingRecord } = existing || {};
+    const savedRecord = {
+      ...existingRecord,
+      ...record,
+      id: String(record.id),
+      userEmail: String(record.userEmail || existing?.userEmail || "").trim().toLowerCase(),
+      userName: record.employeeName || record.userName || existing?.userName || "",
+      employeeName: record.employeeName || existing?.employeeName || record.userName || "",
+      date: String(record.date),
+      status: String(record.status || existing?.status || "Checked In"),
+      checkIn: String(record.checkIn || existing?.checkIn || ""),
+      checkOut: String(record.checkOut || ""),
+      checkInAt: existing?.checkInAt || now,
+      checkOutAt: record.checkOut ? now : null,
+      updatedAt: now
+    };
+
+    await models.Attendance.updateOne(
+      { id: savedRecord.id },
+      { $set: savedRecord, $setOnInsert: { createdAt: now } },
+      { upsert: true }
+    );
+    return getPortalState();
+  }
+
   const current = normalizePortalState(await getPortalState());
   const attendance = [...current.attendance];
   const existingIndex = attendance.findIndex((item) => item.id === record.id);
@@ -269,7 +320,7 @@ async function findRegisteredUser(email) {
 }
 
 async function getNextId(model) {
-  const latest = await model.findOne({ id: { $exists: true } }).sort({ id: -1 }).lean();
+  const latest = await model.findOne({ id: { $type: "number" } }).sort({ id: -1 }).lean();
   return Number(latest?.id || 0) + 1;
 }
 

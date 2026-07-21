@@ -106,8 +106,8 @@ function createModels(connection) {
   }, { collection: "Candidates", versionKey: false, strict: false });
 
   const attendanceSchema = new mongoose.Schema({
-    id: { type: Number, index: true },
-    employeeId: Number,
+    id: { type: mongoose.Schema.Types.Mixed, index: true },
+    employeeId: mongoose.Schema.Types.Mixed,
     userEmail: { type: String, index: true },
     userName: String,
     date: { type: String, index: true },
