@@ -636,6 +636,12 @@ button:disabled {
   min-width: 854px;
 }
 
+.editable-attendance-records .data-head,
+.editable-attendance-records .data-row {
+  grid-template-columns: 170px 190px 130px 150px 130px 130px 104px;
+  min-width: 1004px;
+}
+
 .data-head span,
 .data-row span {
   min-height: 42px;

@@ -1023,7 +1023,13 @@ function AttendancePage({ store, commit, commitAttendance, session }) {
           <p className="empty-note">No employee profile is linked to {session.email}. Add this email in Employee Directory to mark attendance.</p>
         </Panel>
       )}
-      <AttendanceTable attendance={store.attendance} employees={store.employees} className="full-row-panel" />
+      <AttendanceTable
+        attendance={store.attendance}
+        employees={store.employees}
+        canEdit={session.role === "admin"}
+        onSaveAttendance={commitAttendance || commit}
+        className="full-row-panel"
+      />
     </DashboardGrid>
   );
 }
@@ -2056,10 +2062,11 @@ function ReceiptPreviewModal({ receipt, onClose }) {
   );
 }
 
-function AttendanceTable({ attendance, employees = [], title = "Attendance Records", className = "" }) {
+function AttendanceTable({ attendance, employees = [], title = "Attendance Records", className = "", canEdit = false, onSaveAttendance }) {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [employeeName, setEmployeeName] = useState("");
+  const [editingAttendance, setEditingAttendance] = useState(null);
   const employeeNames = [...new Set([
     ...employees.map((employee) => employee.name).filter(Boolean),
     ...attendance.map((record) => record.employeeName).filter(Boolean)
@@ -2074,6 +2081,20 @@ function AttendanceTable({ attendance, employees = [], title = "Attendance Recor
   }));
   const weeklyRows = buildAttendanceReportRows(attendanceRows, "weekly");
   const monthlyRows = buildAttendanceReportRows(attendanceRows, "monthly");
+
+  const saveAttendanceEdit = async (updatedRecord) => {
+    if (!onSaveAttendance) return;
+    const saved = await onSaveAttendance((current) => ({
+      ...current,
+      attendance: (current.attendance || []).map((record) => (
+        record.id === updatedRecord.id ? updatedRecord : record
+      ))
+    }), updatedRecord);
+    if (saved !== false) {
+      setEditingAttendance(null);
+      toast("Attendance updated.");
+    }
+  };
 
   return (
     <Panel title={title} className={className}>
@@ -2096,8 +2117,133 @@ function AttendanceTable({ attendance, employees = [], title = "Attendance Recor
           <DataTable rows={monthlyRows} columns={["employeeName", "period", "records", "checkedIn", "checkedOut", "workFromHome"]} />
         </div>
       </div>
-      <DataTable rows={attendanceRows} columns={["employeeId", "employeeName", "date", "status", "checkIn", "checkOut"]} className="attendance-records" />
+      {canEdit ? (
+        <div className="data-table attendance-records editable-attendance-records">
+          <div className="data-head">
+            <span>EmployeeId</span>
+            <span>EmployeeName</span>
+            <span>Date</span>
+            <span>Status</span>
+            <span>CheckIn</span>
+            <span>CheckOut</span>
+            <span>Action</span>
+          </div>
+          {attendanceRows.length ? attendanceRows.map((record, index) => (
+            <div className="data-row" key={record.id || index}>
+              <span>{record.employeeId || "--"}</span>
+              <span>{record.employeeName || "--"}</span>
+              <span>{record.date || "--"}</span>
+              <span>{record.status || "--"}</span>
+              <span>{record.checkIn || "--"}</span>
+              <span>{record.checkOut || "--"}</span>
+              <span>
+                <button className="icon-action" type="button" aria-label={`Edit attendance for ${record.employeeName}`} title="Edit attendance" onClick={() => setEditingAttendance(record)}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                  </svg>
+                </button>
+              </span>
+            </div>
+          )) : <p className="empty-note">No records yet.</p>}
+        </div>
+      ) : (
+        <DataTable rows={attendanceRows} columns={["employeeId", "employeeName", "date", "status", "checkIn", "checkOut"]} className="attendance-records" />
+      )}
+      {editingAttendance ? (
+        <AttendanceEditModal
+          record={editingAttendance}
+          employees={employees}
+          onClose={() => setEditingAttendance(null)}
+          onSave={saveAttendanceEdit}
+        />
+      ) : null}
     </Panel>
+  );
+}
+
+function AttendanceEditModal({ record, employees, onClose, onSave }) {
+  const [form, setForm] = useState({
+    employeeId: record.employeeId || "",
+    employeeName: record.employeeName || "",
+    userEmail: record.userEmail || "",
+    date: record.date || "",
+    status: record.status || "Checked In",
+    checkIn: record.checkIn || "",
+    checkOut: record.checkOut || ""
+  });
+
+  const updateField = (field, value) => {
+    setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const selectEmployee = (employeeId) => {
+    const employee = employees.find((item) => item.id === employeeId);
+    setForm((current) => ({
+      ...current,
+      employeeId,
+      employeeName: employee?.name || current.employeeName,
+      userEmail: employee?.email || current.userEmail
+    }));
+  };
+
+  const submitEdit = (event) => {
+    event.preventDefault();
+    if (!String(form.employeeId).trim() || !form.employeeName.trim() || !form.date) {
+      toast("Employee, name, and date are required.", "error");
+      return;
+    }
+
+    onSave({
+      ...record,
+      employeeId: String(form.employeeId).trim(),
+      employeeName: form.employeeName.trim(),
+      userEmail: form.userEmail || record.userEmail || "",
+      date: form.date,
+      status: form.status,
+      checkIn: form.checkIn.trim(),
+      checkOut: form.checkOut.trim()
+    });
+  };
+
+  return (
+    <div className="receipt-modal-backdrop" role="presentation" onClick={onClose}>
+      <section className="receipt-modal login-edit-modal" role="dialog" aria-modal="true" aria-label="Edit attendance" onClick={(event) => event.stopPropagation()}>
+        <header>
+          <div>
+            <h2>Edit Attendance</h2>
+            <p>{record.employeeName}</p>
+          </div>
+          <button type="button" className="icon-action" aria-label="Close attendance editor" title="Close" onClick={onClose}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 6l12 12" />
+              <path d="M18 6L6 18" />
+            </svg>
+          </button>
+        </header>
+        <form className="form-grid employee-edit-form" onSubmit={submitEdit}>
+          <label>Employee<select value={form.employeeId} onChange={(event) => selectEmployee(event.target.value)}>
+            <option value={form.employeeId}>{form.employeeName || form.employeeId}</option>
+            {employees
+              .filter((employee) => employee.id !== form.employeeId)
+              .map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
+          </select></label>
+          <label>Employee Name<input value={form.employeeName} onChange={(event) => updateField("employeeName", event.target.value)} /></label>
+          <label>Date<input type="date" value={dateInputValue(form.date)} onChange={(event) => updateField("date", event.target.value)} /></label>
+          <label>Status<select value={form.status} onChange={(event) => updateField("status", event.target.value)}>
+            <option value="Checked In">Checked In</option>
+            <option value="Checked Out">Checked Out</option>
+            <option value="Work From Home">Work From Home</option>
+          </select></label>
+          <label>Check In<input type="time" value={form.checkIn} onChange={(event) => updateField("checkIn", event.target.value)} /></label>
+          <label>Check Out<input type="time" value={form.checkOut} onChange={(event) => updateField("checkOut", event.target.value)} /></label>
+          <div className="modal-form-actions">
+            <button type="button" className="secondary-button" onClick={onClose}>Cancel</button>
+            <button type="submit" className="primary-button">Save Attendance</button>
+          </div>
+        </form>
+      </section>
+    </div>
   );
 }
 
