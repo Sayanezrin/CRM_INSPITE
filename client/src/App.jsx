@@ -1039,6 +1039,29 @@ function getEmployeeForSession(store, session) {
   };
 }
 
+function findEmployeeForAttendance(record, employees = []) {
+  const email = String(record.userEmail || "").trim().toLowerCase();
+  if (email) {
+    const emailMatch = employees.find((employee) => employee.email?.trim().toLowerCase() === email);
+    if (emailMatch) return emailMatch;
+  }
+
+  const name = String(record.employeeName || "").trim().toLowerCase();
+  if (!name) return null;
+  return employees.find((employee) => employee.name?.trim().toLowerCase() === name) || null;
+}
+
+function normalizeAttendanceEmployee(record, employees = []) {
+  const employee = findEmployeeForAttendance(record, employees);
+  if (!employee) return { ...record, employeeId: record.employeeId || record.id };
+  return {
+    ...record,
+    employeeId: employee.id,
+    employeeName: employee.name || record.employeeName,
+    userEmail: employee.email || record.userEmail || ""
+  };
+}
+
 function AttendancePage({ store, commit, commitAttendance, deleteAttendance, session }) {
   const currentEmployee = getEmployeeForSession(store, session);
   return (
@@ -1514,7 +1537,9 @@ function AdminExpenseFormPanel({ store, commit, createdBy = "Admin", title = "Ad
 
 function EmployeeAttendancePanel({ store, commit, currentEmployee }) {
   const [savingAttendance, setSavingAttendance] = useState(false);
-  const employeeAttendance = store.attendance.filter((item) => item.employeeId === currentEmployee.id);
+  const employeeAttendance = store.attendance
+    .map((record) => normalizeAttendanceEmployee(record, store.employees))
+    .filter((item) => item.employeeId === currentEmployee.id);
   const activeAttendance = employeeAttendance.find((item) => item.date === today() && item.status !== "Checked Out" && !item.checkOut);
   const checkInDisabled = Boolean(activeAttendance);
   const checkOutDisabled = !activeAttendance;
@@ -2095,29 +2120,28 @@ function AttendanceTable({ attendance, employees = [], title = "Attendance Recor
   const [toDate, setToDate] = useState("");
   const [employeeName, setEmployeeName] = useState("");
   const [editingAttendance, setEditingAttendance] = useState(null);
+  const normalizedAttendance = attendance.map((record) => normalizeAttendanceEmployee(record, employees));
   const employeeNames = [...new Set([
     ...employees.map((employee) => employee.name).filter(Boolean),
-    ...attendance.map((record) => record.employeeName).filter(Boolean)
+    ...normalizedAttendance.map((record) => record.employeeName).filter(Boolean)
   ])].sort((a, b) => a.localeCompare(b));
-  const filteredAttendance = attendance.filter((record) => (
+  const filteredAttendance = normalizedAttendance.filter((record) => (
     (!fromDate && !toDate ? true : isWithinDateRange(record.date, fromDate, toDate))
     && (!employeeName || record.employeeName === employeeName)
   ));
-  const attendanceRows = filteredAttendance.map((record) => ({
-    ...record,
-    employeeId: record.employeeId || record.id
-  }));
+  const attendanceRows = filteredAttendance;
   const weeklyRows = buildAttendanceReportRows(attendanceRows, "weekly");
   const monthlyRows = buildAttendanceReportRows(attendanceRows, "monthly");
 
   const saveAttendanceEdit = async (updatedRecord) => {
     if (!onSaveAttendance) return;
+    const normalizedRecord = normalizeAttendanceEmployee(updatedRecord, employees);
     const saved = await onSaveAttendance((current) => ({
       ...current,
       attendance: (current.attendance || []).map((record) => (
-        record.id === updatedRecord.id ? updatedRecord : record
+        record.id === normalizedRecord.id ? normalizedRecord : record
       ))
-    }), updatedRecord);
+    }), normalizedRecord);
     if (saved !== false) {
       setEditingAttendance(null);
       toast("Attendance updated.");

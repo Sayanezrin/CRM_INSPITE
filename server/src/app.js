@@ -166,8 +166,14 @@ async function getPortalState() {
   if (models) {
     const document = await models.PortalState.findOne({ _id: "main" }).lean();
     const portal = document?.dataJson ? JSON.parse(document.dataJson) : null;
+    const normalizedPortal = normalizePortalState(portal);
     const attendance = await models.Attendance.find({}).sort({ date: -1, updatedAt: -1, _id: -1 }).lean();
-    return { ...normalizePortalState(portal), attendance: attendance.map(toPortalAttendanceRecord) };
+    return {
+      ...normalizedPortal,
+      attendance: attendance
+        .map(toPortalAttendanceRecord)
+        .map((record) => normalizeAttendanceEmployee(record, normalizedPortal.employees))
+    };
   }
   return readPortalFile();
 }
@@ -199,6 +205,29 @@ function toPortalAttendanceRecord(record) {
     status: record.status === "In" ? "Checked In" : record.status || "Checked In",
     checkIn: record.checkIn || formatAttendanceTime(record.checkInAt),
     checkOut: record.checkOut || formatAttendanceTime(record.checkOutAt)
+  };
+}
+
+function findEmployeeForAttendance(record, employees = []) {
+  const email = String(record.userEmail || "").trim().toLowerCase();
+  if (email) {
+    const emailMatch = employees.find((employee) => employee.email?.trim().toLowerCase() === email);
+    if (emailMatch) return emailMatch;
+  }
+
+  const name = String(record.employeeName || "").trim().toLowerCase();
+  if (!name) return null;
+  return employees.find((employee) => employee.name?.trim().toLowerCase() === name) || null;
+}
+
+function normalizeAttendanceEmployee(record, employees = []) {
+  const employee = findEmployeeForAttendance(record, employees);
+  if (!employee) return record;
+  return {
+    ...record,
+    employeeId: employee.id,
+    employeeName: employee.name || record.employeeName,
+    userEmail: employee.email || record.userEmail || ""
   };
 }
 
@@ -295,29 +324,31 @@ async function savePortalState(payload) {
 
 async function savePortalAttendanceRecord(record) {
   const models = await getModelsOrNull();
+  const currentPortal = normalizePortalState(await getPortalState());
+  const normalizedInput = normalizeAttendanceEmployee(record, currentPortal.employees);
   if (models) {
     const now = new Date();
-    const existing = await models.Attendance.findOne({ id: String(record.id) }).lean();
+    const existing = await models.Attendance.findOne({ id: String(normalizedInput.id) }).lean();
     const { _id, createdAt, ...existingRecord } = existing || {};
     const {
       _id: incomingId,
       createdAt: incomingCreatedAt,
       __v,
       ...incomingRecord
-    } = record;
+    } = normalizedInput;
     const savedRecord = {
       ...existingRecord,
       ...incomingRecord,
-      id: String(record.id),
-      userEmail: String(record.userEmail || existing?.userEmail || "").trim().toLowerCase(),
-      userName: record.employeeName || record.userName || existing?.userName || "",
-      employeeName: record.employeeName || existing?.employeeName || record.userName || "",
-      date: String(record.date),
-      status: String(record.status || existing?.status || "Checked In"),
-      checkIn: String(record.checkIn || existing?.checkIn || ""),
-      checkOut: String(record.checkOut || ""),
+      id: String(normalizedInput.id),
+      userEmail: String(normalizedInput.userEmail || existing?.userEmail || "").trim().toLowerCase(),
+      userName: normalizedInput.employeeName || normalizedInput.userName || existing?.userName || "",
+      employeeName: normalizedInput.employeeName || existing?.employeeName || normalizedInput.userName || "",
+      date: String(normalizedInput.date),
+      status: String(normalizedInput.status || existing?.status || "Checked In"),
+      checkIn: String(normalizedInput.checkIn || existing?.checkIn || ""),
+      checkOut: String(normalizedInput.checkOut || ""),
       checkInAt: existing?.checkInAt || now,
-      checkOutAt: record.checkOut ? now : null,
+      checkOutAt: normalizedInput.checkOut ? now : null,
       updatedAt: now
     };
 
@@ -334,13 +365,13 @@ async function savePortalAttendanceRecord(record) {
     };
   }
 
-  const current = normalizePortalState(await getPortalState());
+  const current = currentPortal;
   const attendance = [...current.attendance];
-  const existingIndex = attendance.findIndex((item) => item.id === record.id);
+  const existingIndex = attendance.findIndex((item) => item.id === normalizedInput.id);
   if (existingIndex >= 0) {
-    attendance[existingIndex] = record;
+    attendance[existingIndex] = normalizedInput;
   } else {
-    attendance.unshift(record);
+    attendance.unshift(normalizedInput);
   }
   const next = { ...current, attendance };
   await savePortalState(next);
