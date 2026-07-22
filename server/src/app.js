@@ -347,6 +347,35 @@ async function savePortalAttendanceRecord(record) {
   return next;
 }
 
+async function deletePortalAttendanceRecord(recordId) {
+  const id = String(recordId || "").trim();
+  if (!id) {
+    const error = new Error("Attendance record id is required.");
+    error.status = 400;
+    throw error;
+  }
+
+  const models = await getModelsOrNull();
+  if (models) {
+    await models.Attendance.deleteOne({ id });
+    return {
+      ...(await getPortalState()),
+      deleted: true,
+      storage: "mongodb",
+      deletedId: id,
+      savedAt: new Date().toISOString()
+    };
+  }
+
+  const current = normalizePortalState(await getPortalState());
+  const next = {
+    ...current,
+    attendance: (current.attendance || []).filter((record) => record.id !== id)
+  };
+  await savePortalState(next);
+  return next;
+}
+
 function findUserInPortalPayload(payload, email) {
   const users = [...(payload?.logins || []), ...(payload?.employees || [])];
   const user = users.find((item) => item.email?.trim().toLowerCase() === email);
@@ -608,6 +637,14 @@ app.post("/api/portal/attendance-record", async (req, res, next) => {
       checkOut: String(record.checkOut || "")
     });
     res.json(savedPortal);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete("/api/portal/attendance-record/:id", async (req, res, next) => {
+  try {
+    res.json(await deletePortalAttendanceRecord(req.params.id));
   } catch (error) {
     next(error);
   }

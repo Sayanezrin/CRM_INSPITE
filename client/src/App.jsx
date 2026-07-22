@@ -617,6 +617,33 @@ function App() {
     }
   };
 
+  const deleteAttendance = async (attendanceId) => {
+    try {
+      const savedPortal = await apiJson(`/api/portal/attendance-record/${encodeURIComponent(attendanceId)}`, {
+        method: "DELETE"
+      });
+      if (savedPortal?.storage && savedPortal.storage !== "mongodb") {
+        throw new Error("Backend storage is not connected to MongoDB yet. Attendance was not deleted.");
+      }
+      if (hasPortalData(savedPortal)) {
+        const nextPortal = { ...seedState, ...savedPortal, logins: savedPortal.logins || [] };
+        writeState(nextPortal);
+        setStore(nextPortal);
+      } else {
+        setStore((current) => ({
+          ...current,
+          attendance: (current.attendance || []).filter((record) => record.id !== attendanceId)
+        }));
+      }
+      window.setTimeout(refreshPortalState, 250);
+      toast("Attendance deleted.");
+      return true;
+    } catch (error) {
+      toast(error.message || "Attendance was not deleted from the shared database. Please try again.", "error");
+      return false;
+    }
+  };
+
   if (!session) {
     return <><LoginScreen store={store} onLogin={(nextSession) => { writeSession(nextSession); setSession(nextSession); setActivePage("home"); }} /><ToastHost /></>;
   }
@@ -631,7 +658,7 @@ function App() {
       <main className="portal-main">
         <Header session={session} store={store} activePage={activePage} apiStatus={apiStatus} />
         {session.role === "employee" && <InstallAppNotice installPrompt={installPrompt} onPromptUsed={() => setInstallPrompt(null)} />}
-        <RolePage session={session} activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} />
+        <RolePage session={session} activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} />
       </main>
       <ToastHost />
     </div>
@@ -898,27 +925,27 @@ function Header({ session, store, activePage, apiStatus }) {
   );
 }
 
-function RolePage({ session, activePage, store, commit, commitAttendance }) {
-  if (session.role === "admin") return <AdminPage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} session={session} />;
-  if (session.role === "hr") return <HrPage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} session={session} />;
+function RolePage({ session, activePage, store, commit, commitAttendance, deleteAttendance }) {
+  if (session.role === "admin") return <AdminPage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} session={session} />;
+  if (session.role === "hr") return <HrPage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} session={session} />;
   return <EmployeePage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} session={session} />;
 }
 
-function AdminPage({ activePage, store, commit, commitAttendance, session }) {
+function AdminPage({ activePage, store, commit, commitAttendance, deleteAttendance, session }) {
   if (activePage === "logins") return <DashboardGrid><AddLoginPanel commit={commit} /><LoginAccessTable logins={store.logins || []} commit={commit} className="full-row-panel" /></DashboardGrid>;
   if (activePage === "employees") return <DashboardGrid><AddEmployeePanel commit={commit} /><EmployeeTable employees={store.employees} commit={commit} canDelete className="full-row-panel" /></DashboardGrid>;
   if (activePage === "finance") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} createdBy="Admin" title="Add Debit Expense" /><FinancePanel store={store} canExport className="full-row-panel" /><LedgerTable store={store} className="full-row-panel" /></DashboardGrid>;
   if (activePage === "leave") return <DashboardGrid><ApprovalPanel title="Leave Applications" items={store.leaves} kind="leaves" commit={commit} /><LeaveTable leaves={store.leaves} /></DashboardGrid>;
   if (activePage === "expenses") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} /><ApprovalPanel title="Expense Approvals" items={store.expenses} kind="expenses" commit={commit} className="full-row-panel" /><ExpenseTable expenses={store.expenses} className="full-row-panel" /></DashboardGrid>;
-  if (activePage === "attendance") return <AttendancePage store={store} commit={commit} commitAttendance={commitAttendance} session={session} />;
+  if (activePage === "attendance") return <AttendancePage store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} session={session} />;
   return <AdminHome store={store} commit={commit} />;
 }
 
-function HrPage({ activePage, store, commit, commitAttendance, session }) {
+function HrPage({ activePage, store, commit, commitAttendance, deleteAttendance, session }) {
   if (activePage === "employees") return <DashboardGrid><EmployeeTable employees={store.employees} /></DashboardGrid>;
   if (activePage === "leave") return <DashboardGrid><LeaveTable leaves={store.leaves} /></DashboardGrid>;
   if (activePage === "expenses") return <DashboardGrid><ApprovalPanel title="Expense Approval Queue" items={store.expenses} kind="expenses" commit={commit} /><ExpenseTable expenses={store.expenses} /></DashboardGrid>;
-  if (activePage === "attendance") return <AttendancePage store={store} commit={commit} commitAttendance={commitAttendance} session={session} />;
+  if (activePage === "attendance") return <AttendancePage store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} session={session} />;
   if (activePage === "finance") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} createdBy="HR" title="Add Debit Expense" /><FinancePanel store={store} canExport className="full-row-panel" /><LedgerTable store={store} className="full-row-panel" /></DashboardGrid>;
   return <DashboardGrid><FinancePanel store={store} canExport className="full-row-panel" /><ApprovalPanel title="Expense Approval Queue" items={store.expenses} kind="expenses" commit={commit} className="full-row-panel" /></DashboardGrid>;
 }
@@ -1012,7 +1039,7 @@ function getEmployeeForSession(store, session) {
   };
 }
 
-function AttendancePage({ store, commit, commitAttendance, session }) {
+function AttendancePage({ store, commit, commitAttendance, deleteAttendance, session }) {
   const currentEmployee = getEmployeeForSession(store, session);
   return (
     <DashboardGrid>
@@ -1028,6 +1055,7 @@ function AttendancePage({ store, commit, commitAttendance, session }) {
         employees={store.employees}
         canEdit={session.role === "admin"}
         onSaveAttendance={commitAttendance || commit}
+        onDeleteAttendance={deleteAttendance}
         className="full-row-panel"
       />
     </DashboardGrid>
@@ -2062,7 +2090,7 @@ function ReceiptPreviewModal({ receipt, onClose }) {
   );
 }
 
-function AttendanceTable({ attendance, employees = [], title = "Attendance Records", className = "", canEdit = false, onSaveAttendance }) {
+function AttendanceTable({ attendance, employees = [], title = "Attendance Records", className = "", canEdit = false, onSaveAttendance, onDeleteAttendance }) {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [employeeName, setEmployeeName] = useState("");
@@ -2094,6 +2122,13 @@ function AttendanceTable({ attendance, employees = [], title = "Attendance Recor
       setEditingAttendance(null);
       toast("Attendance updated.");
     }
+  };
+
+  const deleteAttendanceRecord = async (record) => {
+    if (!onDeleteAttendance || !record?.id) return;
+    const confirmed = window.confirm(`Delete attendance record for ${record.employeeName || "this employee"} on ${record.date || "this date"}?`);
+    if (!confirmed) return;
+    await onDeleteAttendance(record.id);
   };
 
   return (
@@ -2136,11 +2171,20 @@ function AttendanceTable({ attendance, employees = [], title = "Attendance Recor
               <span>{record.status || "--"}</span>
               <span>{record.checkIn || "--"}</span>
               <span>{record.checkOut || "--"}</span>
-              <span>
+              <span className="employee-action-buttons">
                 <button className="icon-action" type="button" aria-label={`Edit attendance for ${record.employeeName}`} title="Edit attendance" onClick={() => setEditingAttendance(record)}>
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M12 20h9" />
                     <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                  </svg>
+                </button>
+                <button className="icon-action danger" type="button" aria-label={`Delete attendance for ${record.employeeName}`} title="Delete attendance" onClick={() => deleteAttendanceRecord(record)}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M3 6h18" />
+                    <path d="M8 6V4h8v2" />
+                    <path d="M19 6l-1 14H6L5 6" />
+                    <path d="M10 11v5" />
+                    <path d="M14 11v5" />
                   </svg>
                 </button>
               </span>

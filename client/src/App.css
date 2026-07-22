@@ -638,8 +638,8 @@ button:disabled {
 
 .editable-attendance-records .data-head,
 .editable-attendance-records .data-row {
-  grid-template-columns: 170px 190px 130px 150px 130px 130px 104px;
-  min-width: 1004px;
+  grid-template-columns: 170px 190px 130px 150px 130px 130px 120px;
+  min-width: 1020px;
 }
 
 .data-head span,
