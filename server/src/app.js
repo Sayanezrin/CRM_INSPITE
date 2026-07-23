@@ -19,6 +19,7 @@ const roles = {
   hr: { title: "HR / Accountant", email: "hr@inspite.local" },
   employee: { title: "Employee", email: "employee@inspite.local" }
 };
+const sessionDurationSeconds = 30 * 24 * 60 * 60;
 
 const emptyPortalState = {
   employees: [],
@@ -108,7 +109,7 @@ function createToken(user) {
     email: user.email,
     name: user.name,
     role: user.role,
-    expiresAt: Math.floor(Date.now() / 1000) + 8 * 60 * 60
+    expiresAt: Math.floor(Date.now() / 1000) + sessionDurationSeconds
   };
   const payload = base64UrlEncode(JSON.stringify(session));
   const signature = crypto.createHmac("sha256", tokenSecret).update(payload).digest("base64url");

@@ -4,6 +4,7 @@ import inspiteLogoImage from "./assets/inspite-logo.png";
 const STORAGE_KEY = "inspite.people.role.portal";
 const SESSION_KEY = "inspite.people.role.session";
 const LOCAL_PASSWORDS_KEY = "inspite.people.local.passwords";
+const REMEMBERED_EMAIL_KEY = "inspite.people.remembered.email";
 const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://127.0.0.1:5018" : "");
 const CHECKIN_LOCATION = {
   latitude: Number(import.meta.env.VITE_CHECKIN_LATITUDE || 10.011327),
@@ -48,6 +49,23 @@ function writeState(value) {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
   } catch {
     // The UI remains usable even if browser storage is unavailable.
+  }
+}
+
+function readRememberedEmail() {
+  try {
+    return window.localStorage.getItem(REMEMBERED_EMAIL_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function writeRememberedEmail(email) {
+  try {
+    const normalizedEmail = String(email || "").trim();
+    if (normalizedEmail) window.localStorage.setItem(REMEMBERED_EMAIL_KEY, normalizedEmail);
+  } catch {
+    // Remembering the email is only a convenience.
   }
 }
 
@@ -702,13 +720,13 @@ function InstallAppNotice({ installPrompt, onPromptUsed }) {
 
 function LoginScreen({ store, onLogin }) {
   const [selectedRole, setSelectedRole] = useState("admin");
-  const [form, setForm] = useState({ email: "", password: "" });
+  const [form, setForm] = useState({ email: readRememberedEmail(), password: "" });
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
   const selectRole = (role) => {
     setSelectedRole(role);
-    setForm({ email: "", password: "" });
+    setForm((current) => ({ ...current, password: "" }));
     setError("");
   };
 
@@ -719,11 +737,13 @@ function LoginScreen({ store, onLogin }) {
         method: "POST",
         body: JSON.stringify({ email: form.email, password: form.password, selectedRole })
       });
+      writeRememberedEmail(form.email);
       toast("Signed in successfully.");
       onLogin({ ...login.user, token: login.token });
     } catch (error) {
       const localLogin = getLocalPasswordLogin({ ...form, selectedRole, store });
       if (localLogin) {
+        writeRememberedEmail(form.email);
         toast("Signed in with local fallback storage.");
         onLogin(localLogin);
         return;
@@ -741,7 +761,7 @@ function LoginScreen({ store, onLogin }) {
         <h1>Work smarter. Track better. Approve faster.</h1>
         <p>Choose one of the three logins to manage employee records, finance entries, approvals, attendance, leave, and reimbursements.</p>
       </section>
-      <form className="login-panel" onSubmit={submit}>
+      <form className="login-panel" onSubmit={submit} autoComplete="on">
         <h2>Sign in</h2>
         <div className="role-picker" aria-label="Select login role">
           {Object.entries(roles).map(([key, role]) => (
@@ -750,10 +770,10 @@ function LoginScreen({ store, onLogin }) {
             </button>
           ))}
         </div>
-        <label>Email<input value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
+        <label>Email<input type="email" name="email" autoComplete="username" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
         <label>Password
           <span className="password-field">
-            <input type={showPassword ? "text" : "password"} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} />
+            <input type={showPassword ? "text" : "password"} name="password" autoComplete="current-password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} />
             <button type="button" aria-label={showPassword ? "Hide password" : "Show password"} title={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword((value) => !value)}>
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 {showPassword ? (
