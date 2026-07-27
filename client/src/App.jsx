@@ -2122,6 +2122,18 @@ function EmployeeEditModal({ employee, onClose, onSave }) {
     setForm((current) => ({ ...current, [field]: value }));
   };
 
+  const handleDocumentUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const document = await readEmployeeDocument(file);
+      updateField("aadhaarDocument", document);
+    } catch (error) {
+      toast(error.message, "error");
+      event.target.value = "";
+    }
+  };
+
   const submitEdit = (event) => {
     event.preventDefault();
     if (!String(form.id).trim() || !form.name.trim() || !form.email.trim()) {
@@ -2742,18 +2754,6 @@ function FinanceEditModal({ record, onClose, onSave }) {
 
   const updateField = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
-  };
-
-  const handleDocumentUpload = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    try {
-      const document = await readEmployeeDocument(file);
-      updateField("aadhaarDocument", document);
-    } catch (error) {
-      toast(error.message, "error");
-      event.target.value = "";
-    }
   };
 
   const submitEdit = (event) => {
