@@ -2544,8 +2544,6 @@ function FinancePanel({ store, canExport = false, className = "" }) {
         <button className="secondary-button" onClick={() => downloadPeriodReport("weekly")}>Weekly Excel</button>
         <button className="secondary-button" onClick={() => downloadPeriodReport("monthly")}>Monthly Excel</button>
         <button className="secondary-button" onClick={() => downloadPeriodReport("yearly")}>Yearly Excel</button>
-        <button className="secondary-button" onClick={() => downloadCsv("credit-debit-ledger.csv", store.ledger, ledgerCsvColumns)}>Export Ledger CSV</button>
-        {canExport && <button className="secondary-button" onClick={() => downloadCsv("employee-expenses.csv", store.expenses, expenseCsvColumns)}>Export Expenses CSV</button>}
       </div>
       <DataTable rows={financeRows} columns={financeExportColumns} />
     </Panel>
