@@ -557,6 +557,35 @@ function downloadExcelReport(filename, title, sheets) {
   toast("Excel report downloaded.");
 }
 
+function downloadFinanceRegisterExcel(filename, rows) {
+  if (!rows.length) {
+    toast("No finance records available for this report.", "error");
+    return;
+  }
+
+  const headerRow = financePrimaryColumns
+    .map((column) => `<th>${escapeHtml(column.label)}</th>`)
+    .join("");
+  const bodyRows = rows.map((row) => `
+    <tr>${financePrimaryColumns.map((column) => {
+      const value = row[column.key];
+      return `<td>${escapeHtml(isCurrencyColumn(column) ? (value === "" || value === null || value === undefined ? "" : Number(value || 0)) : value ?? "")}</td>`;
+    }).join("")}</tr>
+  `).join("");
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;margin:0}table{border-collapse:collapse}th,td{border:1px solid #d0d0d0;padding:4px 8px;white-space:nowrap}th{background:#ffcc33;color:#000;font-weight:400}</style></head><body><table><thead><tr>${headerRow}</tr></thead><tbody>${bodyRows}</tbody></table></body></html>`;
+  const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  toast("Finance Excel report downloaded.");
+}
+
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -2498,23 +2527,8 @@ function FinancePanel({ store, canExport = false, className = "" }) {
   const adminHrExpenses = (store.expenses || []).filter((item) => item.status === "Approved" && item.createdBy !== "Employee").reduce((sum, item) => sum + Number(item.amount || 0), 0);
 
   const downloadPeriodReport = (period) => {
-    const label = `${period.charAt(0).toUpperCase()}${period.slice(1)} Finance Report`;
     const periodFinanceRows = financeRows.filter((row) => isWithinPeriod(row.date, period));
-    const periodExpenses = (store.expenses || []).filter((item) => isWithinPeriod(item.date || item.submittedAt, period)).map((item) => ({
-      ...item,
-      receiptName: item.receipt?.name || ""
-    }));
-    const periodLedger = (store.ledger || []).filter((item) => isWithinPeriod(item.date, period));
-    const periodLeaves = (store.leaves || []).filter((item) => isWithinPeriod(item.appliedAt || item.from, period));
-    const periodAttendance = (store.attendance || []).filter((item) => isWithinPeriod(item.date, period));
-
-    downloadExcelReport(`inspite-${period}-finance-report.xls`, label, [
-      { title: "Finance Register", columns: financeExportColumns, rows: periodFinanceRows },
-      { title: "Expenses", columns: expenseCsvColumns, rows: periodExpenses },
-      { title: "Ledger", columns: ledgerCsvColumns, rows: periodLedger },
-      { title: "Leaves", columns: ["id", "employeeName", "type", "duration", "from", "to", "reason", "status", "appliedAt"], rows: periodLeaves },
-      { title: "Attendance", columns: ["employeeId", "employeeName", "date", "status", "checkIn", "checkOut"], rows: periodAttendance }
-    ]);
+    downloadFinanceRegisterExcel(`inspite-${period}-finance-register.xls`, periodFinanceRows);
   };
 
   return (
