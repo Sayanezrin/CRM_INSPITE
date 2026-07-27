@@ -1557,7 +1557,7 @@ function AddEmployeePanel({ commit }) {
         <input placeholder="College" value={employee.college} onChange={(event) => setEmployee({ ...employee, college: event.target.value })} />
         <input className="wide-input" placeholder="Address" value={employee.address} onChange={(event) => setEmployee({ ...employee, address: event.target.value })} />
         <label className="receipt-field wide-input">Aadhaar card document<input type="file" accept="image/*,.pdf,application/pdf" onChange={handleDocumentUpload} /><small>{employee.aadhaarDocument ? employee.aadhaarDocument.name : "PDF or image, max 2 MB"}</small></label>
-        <button className="primary-button">Add Employee</button>
+        <button className="primary-button employee-submit-button">Add Employee</button>
       </form>
     </Panel>
   );

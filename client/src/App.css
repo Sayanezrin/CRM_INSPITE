@@ -485,6 +485,12 @@ button:disabled {
   align-items: end;
 }
 
+.employee-submit-button {
+  align-self: start;
+  margin-top: 29px;
+  min-height: 48px;
+}
+
 .wide-input {
   grid-column: span 2;
 }
@@ -1014,6 +1020,10 @@ button:disabled {
   .form-grid,
   .employee-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .employee-submit-button {
+    margin-top: 0;
   }
 
   .profile-detail-grid {
