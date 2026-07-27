@@ -2520,15 +2520,29 @@ function getTotals(rows) {
 }
 
 function FinancePanel({ store, canExport = false, className = "" }) {
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const financeRows = buildFinanceRows(store);
   const totals = getTotals(financeRows);
   const approvedExpenses = (store.expenses || []).filter((item) => item.status === "Approved").reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const pendingExpenses = (store.expenses || []).filter((item) => item.status === "Pending").reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const adminHrExpenses = (store.expenses || []).filter((item) => item.status === "Approved" && item.createdBy !== "Employee").reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const filteredFinanceRows = financeRows.filter((row) => (
+    !fromDate && !toDate ? true : isWithinDateRange(row.date, fromDate, toDate)
+  ));
 
   const downloadPeriodReport = (period) => {
     const periodFinanceRows = financeRows.filter((row) => isWithinPeriod(row.date, period));
     downloadFinanceRegisterExcel(`inspite-${period}-finance-register.xls`, periodFinanceRows);
+  };
+
+  const downloadRangeReport = () => {
+    if (!fromDate && !toDate) {
+      toast("Select From or To date before downloading selected days.", "error");
+      return;
+    }
+    const rangeLabel = `${fromDate || "start"}-to-${toDate || "today"}`;
+    downloadFinanceRegisterExcel(`inspite-finance-register-${rangeLabel}.xls`, filteredFinanceRows);
   };
 
   return (
@@ -2545,7 +2559,13 @@ function FinancePanel({ store, canExport = false, className = "" }) {
         <button className="secondary-button" onClick={() => downloadPeriodReport("monthly")}>Monthly Excel</button>
         <button className="secondary-button" onClick={() => downloadPeriodReport("yearly")}>Yearly Excel</button>
       </div>
-      <DataTable rows={financeRows} columns={financeExportColumns} />
+      <div className="table-filter-bar finance-date-filter">
+        <label>From<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label>
+        <label>To<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>
+        <button type="button" className="secondary-button" onClick={() => { setFromDate(""); setToDate(""); }}>Clear</button>
+        <button type="button" className="secondary-button" onClick={downloadRangeReport}>Download Selected Days</button>
+      </div>
+      <DataTable rows={filteredFinanceRows} columns={financeExportColumns} />
     </Panel>
   );
 }
