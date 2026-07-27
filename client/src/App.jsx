@@ -212,10 +212,23 @@ function money(value) {
   return `Rs. ${Number(value || 0).toLocaleString("en-IN")}`;
 }
 
-const ledgerCsvColumns = ["id", "type", "date", "account", "category", "amount", "note", "createdBy"];
+const financePrimaryColumns = [
+  { key: "buyerSupplierPincode", label: "Buyer/Supplier - Pincode" },
+  { key: "ledgerName", label: "Ledger Name" },
+  { key: "ledgerAmount", label: "Ledger Amount", currency: true },
+  { key: "ledgerAmountDrCr", label: "Ledger Amount Dr/Cr" },
+  { key: "itemName", label: "Item Name" },
+  { key: "billedQuantity", label: "Billed Quantity" },
+  { key: "itemRate", label: "Item Rate", currency: true },
+  { key: "itemRatePer", label: "Item Rate per" },
+  { key: "itemAmount", label: "Item Amount", currency: true },
+  { key: "changeMode", label: "Change Mode" },
+  { key: "narration", label: "Narration" }
+];
+const financeRegisterColumns = [{ key: "date", label: "Date" }, ...financePrimaryColumns];
+const ledgerCsvColumns = ["id", "type", "date", "account", "category", "amount", "note", "createdBy", ...financePrimaryColumns];
 const expenseCsvColumns = ["id", "employeeId", "employeeName", "category", "date", "amount", "notes", "status", "submittedAt", "createdBy", "receiptName"];
-const financeExportColumns = ["source", "id", "type", "date", "employeeName", "account", "category", "amount", "status", "note", "createdBy", "receiptName"];
-const debitExpenseCategories = ["Salary", "Food & Meals", "Office Supplies", "Local Transportation (Cab, Auto, Parking, Toll)", "Other"];
+const financeExportColumns = financeRegisterColumns;
 const TOAST_EVENT = "inspite-toast";
 
 function toast(message, type = "success") {
@@ -246,9 +259,24 @@ function ToastHost() {
   );
 }
 
+function columnKey(column) {
+  return typeof column === "string" ? column : column.key;
+}
+
+function columnLabel(column) {
+  return typeof column === "string" ? column : column.label || column.key;
+}
+
+function isCurrencyColumn(column) {
+  const key = columnKey(column);
+  return Boolean(column?.currency || key === "amount" || key === "salary");
+}
+
 function downloadCsv(filename, rows, columns) {
-  const headers = columns || Object.keys(rows[0] || {});
-  if (!headers.length) {
+  const resolvedColumns = (columns || Object.keys(rows[0] || {})).map((column) => (
+    typeof column === "string" ? { key: column, label: column } : column
+  ));
+  if (!resolvedColumns.length) {
     toast("No records available to export.", "error");
     return;
   }
@@ -257,8 +285,8 @@ function downloadCsv(filename, rows, columns) {
     receiptName: row.receipt?.name || ""
   }));
   const csv = [
-    headers.join(","),
-    ...exportRows.map((row) => headers.map((key) => `"${String(row[key] ?? "").replace(/"/g, '""')}"`).join(","))
+    resolvedColumns.map((column) => columnLabel(column)).join(","),
+    ...exportRows.map((row) => resolvedColumns.map((column) => `"${String(row[columnKey(column)] ?? "").replace(/"/g, '""')}"`).join(","))
   ].join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -410,12 +438,23 @@ function ledgerEntryFromExpense(expense, createdBy = expense.createdBy || "Admin
     id: uid("TXN"),
     type: "Debit",
     date: expense.date || expense.submittedAt || today(),
-    account: expense.employeeName || "Admin / Company",
-    category: expense.category,
+    account: expense.ledgerName || expense.employeeName || "Admin / Company",
+    category: expense.itemName || expense.category,
     amount: Number(expense.amount || 0),
-    note: expense.notes || "",
+    note: expense.narration || expense.notes || "",
     createdBy,
-    sourceExpenseId: expense.id
+    sourceExpenseId: expense.id,
+    buyerSupplierPincode: expense.buyerSupplierPincode || "",
+    ledgerName: expense.ledgerName || expense.employeeName || "",
+    ledgerAmount: Number(expense.ledgerAmount || expense.amount || 0),
+    ledgerAmountDrCr: expense.ledgerAmountDrCr || "Dr",
+    itemName: expense.itemName || expense.category || "",
+    billedQuantity: expense.billedQuantity || "",
+    itemRate: expense.itemRate || "",
+    itemRatePer: expense.itemRatePer || "",
+    itemAmount: Number(expense.itemAmount || expense.amount || 0),
+    changeMode: expense.changeMode || "",
+    narration: expense.narration || expense.notes || ""
   };
 }
 
@@ -434,7 +473,18 @@ function buildFinanceRows(store) {
     status: "Recorded",
     note: item.note,
     createdBy: item.createdBy || "HR",
-    receiptName: ""
+    receiptName: "",
+    buyerSupplierPincode: item.buyerSupplierPincode || "",
+    ledgerName: item.ledgerName || item.account || "",
+    ledgerAmount: Number(item.ledgerAmount || item.amount || 0),
+    ledgerAmountDrCr: item.ledgerAmountDrCr || "Dr",
+    itemName: item.itemName || item.category || "",
+    billedQuantity: item.billedQuantity || "",
+    itemRate: item.itemRate || "",
+    itemRatePer: item.itemRatePer || "",
+    itemAmount: Number(item.itemAmount || item.amount || 0),
+    changeMode: item.changeMode || "",
+    narration: item.narration || item.note || ""
   }));
 
   const ledgerExpenseIds = new Set((store.ledger || []).map((item) => item.sourceExpenseId).filter(Boolean));
@@ -452,7 +502,18 @@ function buildFinanceRows(store) {
     status: item.status,
     note: item.notes,
     createdBy: item.createdBy || "Employee",
-    receiptName: item.receipt?.name || ""
+    receiptName: item.receipt?.name || "",
+    buyerSupplierPincode: item.buyerSupplierPincode || "",
+    ledgerName: item.ledgerName || item.employeeName || "",
+    ledgerAmount: Number(item.ledgerAmount || item.amount || 0),
+    ledgerAmountDrCr: item.ledgerAmountDrCr || "Dr",
+    itemName: item.itemName || item.category || "",
+    billedQuantity: item.billedQuantity || "",
+    itemRate: item.itemRate || "",
+    itemRatePer: item.itemRatePer || "",
+    itemAmount: Number(item.itemAmount || item.amount || 0),
+    changeMode: item.changeMode || "",
+    narration: item.narration || item.notes || ""
   }));
 
   return [...ledgerRows, ...expenseRows].sort((a, b) => {
@@ -472,9 +533,13 @@ function downloadExcelReport(filename, title, sheets) {
   const body = sheets.map((sheet) => `
     <h2>${escapeHtml(sheet.title)}</h2>
     <table>
-      <thead><tr>${sheet.columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("")}</tr></thead>
+      <thead><tr>${sheet.columns.map((column) => `<th>${escapeHtml(columnLabel(column))}</th>`).join("")}</tr></thead>
       <tbody>
-        ${sheet.rows.map((row) => `<tr>${sheet.columns.map((column) => `<td>${escapeHtml(column === "amount" || column === "salary" ? Number(row[column] || 0) : row[column] ?? "")}</td>`).join("")}</tr>`).join("")}
+        ${sheet.rows.map((row) => `<tr>${sheet.columns.map((column) => {
+          const key = columnKey(column);
+          const value = row[key];
+          return `<td>${escapeHtml(isCurrencyColumn(column) ? (value === "" || value === null || value === undefined ? "" : Number(value || 0)) : value ?? "")}</td>`;
+        }).join("")}</tr>`).join("")}
       </tbody>
     </table>
   `).join("");
@@ -1463,8 +1528,26 @@ function LedgerEntryPanel({ commit, className = "" }) {
   );
 }
 
+function initialFinanceEntry() {
+  return {
+    employeeId: "company",
+    buyerSupplierPincode: "",
+    ledgerName: "",
+    ledgerAmount: "",
+    ledgerAmountDrCr: "Dr",
+    itemName: "",
+    billedQuantity: "",
+    itemRate: "",
+    itemRatePer: "",
+    itemAmount: "",
+    changeMode: "",
+    narration: "",
+    date: ""
+  };
+}
+
 function AdminExpenseFormPanel({ store, commit, createdBy = "Admin", title = "Add Expense" }) {
-  const [expense, setExpense] = useState({ employeeId: "company", category: "Salary", amount: "", date: "", notes: "" });
+  const [expense, setExpense] = useState(initialFinanceEntry);
   const [receipt, setReceipt] = useState(null);
   const [receiptError, setReceiptError] = useState("");
 
@@ -1499,23 +1582,37 @@ function AdminExpenseFormPanel({ store, commit, createdBy = "Admin", title = "Ad
 
   const addExpense = (event) => {
     event.preventDefault();
-    if (!expense.amount) {
-      toast("Enter expense amount before adding.", "error");
+    const calculatedItemAmount = Number(expense.itemAmount || 0) || (Number(expense.billedQuantity || 0) * Number(expense.itemRate || 0));
+    const ledgerAmount = Number(expense.ledgerAmount || 0) || calculatedItemAmount;
+    if (!expense.ledgerName.trim() || !ledgerAmount) {
+      toast("Enter ledger name and ledger amount before adding.", "error");
       return;
     }
     const selectedEmployee = store.employees.find((employee) => employee.id === expense.employeeId);
+    const itemAmount = calculatedItemAmount || ledgerAmount;
     const expenseRecord = {
         id: uid("EXP"),
         employeeId: selectedEmployee?.id || "ADMIN",
         employeeName: selectedEmployee?.name || `${createdBy} / Company`,
-        category: expense.category,
-        amount: Number(expense.amount),
+        category: expense.itemName || "Finance Entry",
+        amount: ledgerAmount,
         date: expense.date,
-        notes: expense.notes.trim(),
+        notes: expense.narration.trim(),
         receipt,
         status: "Approved",
         submittedAt: today(),
-        createdBy
+        createdBy,
+        buyerSupplierPincode: expense.buyerSupplierPincode.trim(),
+        ledgerName: expense.ledgerName.trim(),
+        ledgerAmount,
+        ledgerAmountDrCr: expense.ledgerAmountDrCr,
+        itemName: expense.itemName.trim(),
+        billedQuantity: expense.billedQuantity,
+        itemRate: expense.itemRate,
+        itemRatePer: expense.itemRatePer.trim(),
+        itemAmount,
+        changeMode: expense.changeMode.trim(),
+        narration: expense.narration.trim()
     };
     const ledgerRecord = ledgerEntryFromExpense(expenseRecord, createdBy);
     commit((current) => ({
@@ -1524,7 +1621,7 @@ function AdminExpenseFormPanel({ store, commit, createdBy = "Admin", title = "Ad
       ledger: [ledgerRecord, ...(current.ledger || [])]
     }));
     toast("Debit expense added to finance and ledger.");
-    setExpense({ employeeId: "company", category: "Salary", amount: "", date: "", notes: "" });
+    setExpense(initialFinanceEntry());
     setReceipt(null);
     setReceiptError("");
     event.currentTarget.reset();
@@ -1537,12 +1634,21 @@ function AdminExpenseFormPanel({ store, commit, createdBy = "Admin", title = "Ad
           <option value="company">Admin / Company Expense</option>
           {store.employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
         </select>
-        <select value={expense.category} onChange={(event) => setExpense({ ...expense, category: event.target.value })}>
-          {debitExpenseCategories.map((category) => <option key={category}>{category}</option>)}
+        <input placeholder="Buyer/Supplier - Pincode" value={expense.buyerSupplierPincode} onChange={(event) => setExpense({ ...expense, buyerSupplierPincode: event.target.value })} />
+        <input placeholder="Ledger Name" value={expense.ledgerName} onChange={(event) => setExpense({ ...expense, ledgerName: event.target.value })} />
+        <input type="number" placeholder="Ledger Amount" value={expense.ledgerAmount} onChange={(event) => setExpense({ ...expense, ledgerAmount: event.target.value })} />
+        <select value={expense.ledgerAmountDrCr} onChange={(event) => setExpense({ ...expense, ledgerAmountDrCr: event.target.value })}>
+          <option>Dr</option>
+          <option>Cr</option>
         </select>
-        <input type="number" placeholder="Amount" value={expense.amount} onChange={(event) => setExpense({ ...expense, amount: event.target.value })} />
+        <input placeholder="Item Name" value={expense.itemName} onChange={(event) => setExpense({ ...expense, itemName: event.target.value })} />
+        <input type="number" placeholder="Billed Quantity" value={expense.billedQuantity} onChange={(event) => setExpense({ ...expense, billedQuantity: event.target.value })} />
+        <input type="number" placeholder="Item Rate" value={expense.itemRate} onChange={(event) => setExpense({ ...expense, itemRate: event.target.value })} />
+        <input placeholder="Item Rate per" value={expense.itemRatePer} onChange={(event) => setExpense({ ...expense, itemRatePer: event.target.value })} />
+        <input type="number" placeholder="Item Amount" value={expense.itemAmount} onChange={(event) => setExpense({ ...expense, itemAmount: event.target.value })} />
+        <input placeholder="Change Mode" value={expense.changeMode} onChange={(event) => setExpense({ ...expense, changeMode: event.target.value })} />
         <input type="date" value={dateInputValue(expense.date)} onChange={(event) => setExpense({ ...expense, date: event.target.value })} />
-        <input className="wide-input" placeholder="Notes" value={expense.notes} onChange={(event) => setExpense({ ...expense, notes: event.target.value })} />
+        <input className="wide-input" placeholder="Narration" value={expense.narration} onChange={(event) => setExpense({ ...expense, narration: event.target.value })} />
         <label className="receipt-field">
           <span>Receipt</span>
           <input type="file" accept="image/*,.pdf,application/pdf" onChange={handleReceiptUpload} />
@@ -2028,7 +2134,7 @@ function LedgerTable({ store, className = "" }) {
   const debitLedger = (store.ledger || []).filter((item) => String(item.type || "Debit").toLowerCase() === "debit");
   return (
     <Panel title="Debit Ledger Records" className={className}>
-      <DataTable rows={debitLedger} columns={["id", "type", "date", "account", "category", "amount", "note"]} />
+      <DataTable rows={debitLedger} columns={financeRegisterColumns} />
     </Panel>
   );
 }
@@ -2482,14 +2588,21 @@ function Status({ status }) {
 
 function DataTable({ rows, columns, className = "" }) {
   if (!rows.length) return <p className="empty-note">No records yet.</p>;
+  const resolvedColumns = columns.map((column) => (
+    typeof column === "string" ? { key: column, label: column } : column
+  ));
   return (
     <div className={`data-table ${className}`.trim()}>
-      <div className="data-head" style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(130px, 1fr))` }}>
-        {columns.map((column) => <span key={column}>{column}</span>)}
+      <div className="data-head" style={{ gridTemplateColumns: `repeat(${resolvedColumns.length}, minmax(130px, 1fr))` }}>
+        {resolvedColumns.map((column) => <span key={columnKey(column)}>{columnLabel(column)}</span>)}
       </div>
       {rows.map((row, index) => (
-        <div className="data-row" key={row.id || index} style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(130px, 1fr))` }}>
-          {columns.map((column) => <span key={column}>{column === "salary" || column === "amount" ? money(row[column]) : row[column] || "--"}</span>)}
+        <div className="data-row" key={row.id || index} style={{ gridTemplateColumns: `repeat(${resolvedColumns.length}, minmax(130px, 1fr))` }}>
+          {resolvedColumns.map((column) => {
+            const key = columnKey(column);
+            const value = row[key];
+            return <span key={key}>{isCurrencyColumn(column) ? (value === "" || value === null || value === undefined ? "--" : money(value)) : value || "--"}</span>;
+          })}
         </div>
       ))}
     </div>
