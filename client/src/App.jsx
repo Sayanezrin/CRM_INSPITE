@@ -474,6 +474,7 @@ function buildFinanceRows(store) {
     note: item.note,
     createdBy: item.createdBy || "HR",
     receiptName: "",
+    sourceExpenseId: item.sourceExpenseId || "",
     buyerSupplierPincode: item.buyerSupplierPincode || "",
     ledgerName: item.ledgerName || item.account || "",
     ledgerAmount: Number(item.ledgerAmount || item.amount || 0),
@@ -1048,7 +1049,7 @@ function RolePage({ session, activePage, store, commit, commitAttendance, delete
 function AdminPage({ activePage, store, commit, commitAttendance, deleteAttendance, session }) {
   if (activePage === "logins") return <DashboardGrid><AddLoginPanel commit={commit} /><LoginAccessTable logins={store.logins || []} commit={commit} className="full-row-panel" /></DashboardGrid>;
   if (activePage === "employees") return <DashboardGrid><AddEmployeePanel commit={commit} /><EmployeeTable employees={store.employees} commit={commit} canDelete className="full-row-panel" /></DashboardGrid>;
-  if (activePage === "finance") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} createdBy="Admin" title="Add Debit Expense" /><FinancePanel store={store} canExport className="full-row-panel" /><LedgerTable store={store} className="full-row-panel" /></DashboardGrid>;
+  if (activePage === "finance") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} createdBy="Admin" title="Add Debit Expense" /><FinancePanel store={store} commit={commit} canManage canExport className="full-row-panel" /></DashboardGrid>;
   if (activePage === "leave") return <DashboardGrid><ApprovalPanel title="Leave Applications" items={store.leaves} kind="leaves" commit={commit} /><LeaveTable leaves={store.leaves} /></DashboardGrid>;
   if (activePage === "expenses") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} /><ApprovalPanel title="Expense Approvals" items={store.expenses} kind="expenses" commit={commit} className="full-row-panel" /><ExpenseTable expenses={store.expenses} className="full-row-panel" /></DashboardGrid>;
   if (activePage === "attendance") return <AttendancePage store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} session={session} />;
@@ -1060,7 +1061,7 @@ function HrPage({ activePage, store, commit, commitAttendance, deleteAttendance,
   if (activePage === "leave") return <DashboardGrid><LeaveTable leaves={store.leaves} /></DashboardGrid>;
   if (activePage === "expenses") return <DashboardGrid><ApprovalPanel title="Expense Approval Queue" items={store.expenses} kind="expenses" commit={commit} /><ExpenseTable expenses={store.expenses} /></DashboardGrid>;
   if (activePage === "attendance") return <AttendancePage store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} session={session} />;
-  if (activePage === "finance") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} createdBy="HR" title="Add Debit Expense" /><FinancePanel store={store} canExport className="full-row-panel" /><LedgerTable store={store} className="full-row-panel" /></DashboardGrid>;
+  if (activePage === "finance") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} createdBy="HR" title="Add Debit Expense" /><FinancePanel store={store} canExport className="full-row-panel" /></DashboardGrid>;
   return <DashboardGrid><FinancePanel store={store} canExport className="full-row-panel" /><ApprovalPanel title="Expense Approval Queue" items={store.expenses} kind="expenses" commit={commit} className="full-row-panel" /></DashboardGrid>;
 }
 
@@ -2519,9 +2520,10 @@ function getTotals(rows) {
   }, { credit: 0, debit: 0 });
 }
 
-function FinancePanel({ store, canExport = false, className = "" }) {
+function FinancePanel({ store, commit, canManage = false, canExport = false, className = "" }) {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [editingFinance, setEditingFinance] = useState(null);
   const financeRows = buildFinanceRows(store);
   const totals = getTotals(financeRows);
   const approvedExpenses = (store.expenses || []).filter((item) => item.status === "Approved").reduce((sum, item) => sum + Number(item.amount || 0), 0);
@@ -2545,6 +2547,69 @@ function FinancePanel({ store, canExport = false, className = "" }) {
     downloadFinanceRegisterExcel(`inspite-finance-register-${rangeLabel}.xls`, filteredFinanceRows);
   };
 
+  const deleteFinanceRecord = (row) => {
+    const confirmed = window.confirm(`Delete finance record for ${row.ledgerName || row.itemName || row.date || "this entry"}?`);
+    if (!confirmed) return;
+    commit((current) => ({
+      ...current,
+      ledger: (current.ledger || []).filter((item) => item.id !== row.id),
+      expenses: (current.expenses || []).filter((expense) => (
+        row.sourceExpenseId ? expense.id !== row.sourceExpenseId : row.source === "Expense" ? expense.id !== row.id : true
+      ))
+    }));
+    toast("Finance record deleted.");
+  };
+
+  const saveFinanceRecord = (updatedRow) => {
+    const amount = Number(updatedRow.ledgerAmount || updatedRow.itemAmount || 0);
+    commit((current) => ({
+      ...current,
+      ledger: (current.ledger || []).map((item) => (
+        item.id === updatedRow.id ? {
+          ...item,
+          date: updatedRow.date,
+          account: updatedRow.ledgerName,
+          category: updatedRow.itemName,
+          amount,
+          note: updatedRow.narration,
+          buyerSupplierPincode: updatedRow.buyerSupplierPincode,
+          ledgerName: updatedRow.ledgerName,
+          ledgerAmount: amount,
+          ledgerAmountDrCr: updatedRow.ledgerAmountDrCr,
+          itemName: updatedRow.itemName,
+          billedQuantity: updatedRow.billedQuantity,
+          itemRate: updatedRow.itemRate,
+          itemRatePer: updatedRow.itemRatePer,
+          itemAmount: Number(updatedRow.itemAmount || amount),
+          changeMode: updatedRow.changeMode,
+          narration: updatedRow.narration
+        } : item
+      )),
+      expenses: (current.expenses || []).map((expense) => (
+        expense.id === updatedRow.sourceExpenseId || (updatedRow.source === "Expense" && expense.id === updatedRow.id) ? {
+          ...expense,
+          date: updatedRow.date,
+          category: updatedRow.itemName || expense.category,
+          amount,
+          notes: updatedRow.narration,
+          buyerSupplierPincode: updatedRow.buyerSupplierPincode,
+          ledgerName: updatedRow.ledgerName,
+          ledgerAmount: amount,
+          ledgerAmountDrCr: updatedRow.ledgerAmountDrCr,
+          itemName: updatedRow.itemName,
+          billedQuantity: updatedRow.billedQuantity,
+          itemRate: updatedRow.itemRate,
+          itemRatePer: updatedRow.itemRatePer,
+          itemAmount: Number(updatedRow.itemAmount || amount),
+          changeMode: updatedRow.changeMode,
+          narration: updatedRow.narration
+        } : expense
+      ))
+    }));
+    setEditingFinance(null);
+    toast("Finance record updated.");
+  };
+
   return (
     <Panel title="Debit Finance Register" className={className}>
       <div className="finance-summary">
@@ -2565,8 +2630,135 @@ function FinancePanel({ store, canExport = false, className = "" }) {
         <button type="button" className="secondary-button" onClick={() => { setFromDate(""); setToDate(""); }}>Clear</button>
         <button type="button" className="secondary-button" onClick={downloadRangeReport}>Download Selected Days</button>
       </div>
-      <DataTable rows={filteredFinanceRows} columns={financeExportColumns} />
+      {canManage ? (
+        <FinanceRegisterTable rows={filteredFinanceRows} onEdit={setEditingFinance} onDelete={deleteFinanceRecord} />
+      ) : (
+        <DataTable rows={filteredFinanceRows} columns={financeExportColumns} />
+      )}
+      {editingFinance ? (
+        <FinanceEditModal record={editingFinance} onClose={() => setEditingFinance(null)} onSave={saveFinanceRecord} />
+      ) : null}
     </Panel>
+  );
+}
+
+function FinanceRegisterTable({ rows, onEdit, onDelete }) {
+  const columns = [...financeExportColumns, { key: "action", label: "Action" }];
+  if (!rows.length) return <p className="empty-note">No records yet.</p>;
+
+  return (
+    <div className="data-table finance-records">
+      <div className="data-head" style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(130px, 1fr))` }}>
+        {columns.map((column) => <span key={columnKey(column)}>{columnLabel(column)}</span>)}
+      </div>
+      {rows.map((row, index) => (
+        <div className="data-row" key={row.id || index} style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(130px, 1fr))` }}>
+          {financeExportColumns.map((column) => {
+            const key = columnKey(column);
+            const value = row[key];
+            return <span key={key}>{isCurrencyColumn(column) ? (value === "" || value === null || value === undefined ? "--" : money(value)) : value || "--"}</span>;
+          })}
+          <span className="employee-action-buttons">
+            <button className="icon-action" type="button" aria-label="Edit finance record" title="Edit finance record" onClick={() => onEdit(row)}>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+              </svg>
+            </button>
+            <button className="icon-action danger" type="button" aria-label="Delete finance record" title="Delete finance record" onClick={() => onDelete(row)}>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 6h18" />
+                <path d="M8 6V4h8v2" />
+                <path d="M19 6l-1 14H6L5 6" />
+                <path d="M10 11v5" />
+                <path d="M14 11v5" />
+              </svg>
+            </button>
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FinanceEditModal({ record, onClose, onSave }) {
+  const [form, setForm] = useState({
+    ...record,
+    date: record.date || "",
+    buyerSupplierPincode: record.buyerSupplierPincode || "",
+    ledgerName: record.ledgerName || "",
+    ledgerAmount: record.ledgerAmount || "",
+    ledgerAmountDrCr: record.ledgerAmountDrCr || "Dr",
+    itemName: record.itemName || "",
+    billedQuantity: record.billedQuantity || "",
+    itemRate: record.itemRate || "",
+    itemRatePer: record.itemRatePer || "",
+    itemAmount: record.itemAmount || "",
+    changeMode: record.changeMode || "",
+    narration: record.narration || ""
+  });
+
+  const updateField = (field, value) => {
+    setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const submitEdit = (event) => {
+    event.preventDefault();
+    if (!String(form.ledgerName || "").trim() || !Number(form.ledgerAmount || form.itemAmount || 0)) {
+      toast("Enter ledger name and ledger amount before saving.", "error");
+      return;
+    }
+    onSave({
+      ...form,
+      buyerSupplierPincode: String(form.buyerSupplierPincode || "").trim(),
+      ledgerName: String(form.ledgerName || "").trim(),
+      ledgerAmount: Number(form.ledgerAmount || form.itemAmount || 0),
+      ledgerAmountDrCr: form.ledgerAmountDrCr || "Dr",
+      itemName: String(form.itemName || "").trim(),
+      billedQuantity: form.billedQuantity,
+      itemRate: form.itemRate,
+      itemRatePer: String(form.itemRatePer || "").trim(),
+      itemAmount: Number(form.itemAmount || form.ledgerAmount || 0),
+      changeMode: String(form.changeMode || "").trim(),
+      narration: String(form.narration || "").trim()
+    });
+  };
+
+  return (
+    <div className="receipt-modal-backdrop" role="presentation" onClick={onClose}>
+      <section className="receipt-modal login-edit-modal" role="dialog" aria-modal="true" aria-label="Edit finance record" onClick={(event) => event.stopPropagation()}>
+        <header>
+          <div>
+            <h2>Edit Finance Record</h2>
+            <p>{record.ledgerName || record.itemName || record.date}</p>
+          </div>
+          <button type="button" className="icon-action" aria-label="Close finance editor" title="Close" onClick={onClose}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 6l12 12" />
+              <path d="M18 6L6 18" />
+            </svg>
+          </button>
+        </header>
+        <form className="form-grid employee-edit-form" onSubmit={submitEdit}>
+          <label>Date<input type="date" value={dateInputValue(form.date)} onChange={(event) => updateField("date", event.target.value)} /></label>
+          <label>Buyer/Supplier - Pincode<input value={form.buyerSupplierPincode} onChange={(event) => updateField("buyerSupplierPincode", event.target.value)} /></label>
+          <label>Ledger Name<input value={form.ledgerName} onChange={(event) => updateField("ledgerName", event.target.value)} /></label>
+          <label>Ledger Amount<input type="number" value={form.ledgerAmount} onChange={(event) => updateField("ledgerAmount", event.target.value)} /></label>
+          <label>Ledger Amount Dr/Cr<select value={form.ledgerAmountDrCr} onChange={(event) => updateField("ledgerAmountDrCr", event.target.value)}><option>Dr</option><option>Cr</option></select></label>
+          <label>Item Name<input value={form.itemName} onChange={(event) => updateField("itemName", event.target.value)} /></label>
+          <label>Billed Quantity<input type="number" value={form.billedQuantity} onChange={(event) => updateField("billedQuantity", event.target.value)} /></label>
+          <label>Item Rate<input type="number" value={form.itemRate} onChange={(event) => updateField("itemRate", event.target.value)} /></label>
+          <label>Item Rate per<input value={form.itemRatePer} onChange={(event) => updateField("itemRatePer", event.target.value)} /></label>
+          <label>Item Amount<input type="number" value={form.itemAmount} onChange={(event) => updateField("itemAmount", event.target.value)} /></label>
+          <label>Change Mode<input value={form.changeMode} onChange={(event) => updateField("changeMode", event.target.value)} /></label>
+          <label className="wide-input">Narration<input value={form.narration} onChange={(event) => updateField("narration", event.target.value)} /></label>
+          <div className="modal-form-actions">
+            <button type="button" className="secondary-button" onClick={onClose}>Cancel</button>
+            <button type="submit" className="primary-button">Save Finance Record</button>
+          </div>
+        </form>
+      </section>
+    </div>
   );
 }
 
