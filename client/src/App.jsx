@@ -738,13 +738,16 @@ function App() {
       window.setTimeout(refreshPortalState, 250);
       return true;
     } catch (error) {
-      if (!savedLocal && !attendanceRecord) commit(updater);
-      if (error.status === 401 || error.status === 403) {
-        toast("Backend rejected this login session. Please sign out and sign in again, then mark attendance.", "error");
-      } else {
-        toast(error.message || "Attendance was not saved to the shared database. Please try again.", "error");
+      if (!savedLocal) {
+        commit(updater);
+        savedLocal = true;
       }
-      return false;
+      if (error.status === 401 || error.status === 403) {
+        toast("Attendance was saved locally. Please sign out and sign in again to restore server sync.", "error");
+      } else {
+        toast("Attendance was saved locally, but server sync failed. Please try again later.", "error");
+      }
+      return true;
     }
   };
 
