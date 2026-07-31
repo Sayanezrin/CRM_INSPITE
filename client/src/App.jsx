@@ -1238,7 +1238,7 @@ function AdminHome({ store, commit }) {
       </Panel>
       <ApprovalPanel title="Leave Applications" items={store.leaves.filter((item) => item.status === "Pending")} kind="leaves" commit={commit} className="full-row-panel" />
       <ApprovalPanel title="Expense Approvals" items={store.expenses.filter((item) => item.status === "Pending")} kind="expenses" commit={commit} className="full-row-panel" />
-      <AttendanceTable attendance={store.attendance.slice(0, 5)} employees={store.employees} title="Recent Attendance" className="full-row-panel" />
+      <AttendanceTable attendance={store.attendance.slice(0, 5)} employees={store.employees} title="Recent Attendance" className="full-row-panel" showReports={false} />
     </DashboardGrid>
   );
 }
@@ -2325,7 +2325,7 @@ function ReceiptPreviewModal({ receipt, onClose }) {
   );
 }
 
-function AttendanceTable({ attendance, employees = [], title = "Attendance Records", className = "", canEdit = false, onSaveAttendance, onDeleteAttendance }) {
+function AttendanceTable({ attendance, employees = [], title = "Attendance Records", className = "", canEdit = false, showReports = true, onSaveAttendance, onDeleteAttendance }) {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [employeeName, setEmployeeName] = useState("");
@@ -2340,8 +2340,8 @@ function AttendanceTable({ attendance, employees = [], title = "Attendance Recor
     && (!employeeName || record.employeeName === employeeName)
   ));
   const attendanceRows = filteredAttendance;
-  const weeklyRows = buildAttendanceReportRows(attendanceRows, "weekly");
-  const monthlyRows = buildAttendanceReportRows(attendanceRows, "monthly");
+  const weeklyRows = showReports ? buildAttendanceReportRows(attendanceRows, "weekly") : [];
+  const monthlyRows = showReports ? buildAttendanceReportRows(attendanceRows, "monthly") : [];
 
   const saveAttendanceEdit = async (updatedRecord) => {
     if (!onSaveAttendance) return;
@@ -2376,16 +2376,18 @@ function AttendanceTable({ attendance, employees = [], title = "Attendance Recor
         <label>To<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>
         <button type="button" className="secondary-button" onClick={() => { setEmployeeName(""); setFromDate(""); setToDate(""); }}>Clear</button>
       </div>
-      <div className="attendance-report-grid">
-        <div className="attendance-report-card">
-          <h3>Weekly Report</h3>
-          <DataTable rows={weeklyRows} columns={["employeeName", "period", "records", "checkedIn", "checkedOut", "workFromHome"]} />
+      {showReports && (
+        <div className="attendance-report-grid">
+          <div className="attendance-report-card">
+            <h3>Weekly Report</h3>
+            <DataTable rows={weeklyRows} columns={["employeeName", "period", "records", "checkedIn", "checkedOut", "workFromHome"]} />
+          </div>
+          <div className="attendance-report-card">
+            <h3>Monthly Report</h3>
+            <DataTable rows={monthlyRows} columns={["employeeName", "period", "records", "checkedIn", "checkedOut", "workFromHome"]} />
+          </div>
         </div>
-        <div className="attendance-report-card">
-          <h3>Monthly Report</h3>
-          <DataTable rows={monthlyRows} columns={["employeeName", "period", "records", "checkedIn", "checkedOut", "workFromHome"]} />
-        </div>
-      </div>
+      )}
       {canEdit ? (
         <div className="data-table attendance-records editable-attendance-records">
           <div className="data-head">
