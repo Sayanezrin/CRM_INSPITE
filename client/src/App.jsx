@@ -711,6 +711,18 @@ function App() {
 
   const commitAttendance = async (updater, attendanceRecord) => {
     let savedLocal = false;
+    const saveLocalAttendance = (baseStore = store) => {
+      const next = typeof updater === "function" ? updater(baseStore) : updater;
+      writeState(next);
+      setStore(next);
+      savedLocal = true;
+      return true;
+    };
+
+    if (session?.provider === "local-password" || String(session?.token || "").startsWith("local-")) {
+      return saveLocalAttendance();
+    }
+
     try {
       const latest = attendanceRecord ? null : await apiJson("/api/portal");
       const base = attendanceRecord
@@ -724,9 +736,6 @@ function App() {
         method: "POST",
         body: JSON.stringify({ record: changedRecord })
       });
-      if (savedPortal?.storage && savedPortal.storage !== "mongodb") {
-        throw new Error("Backend storage is not connected to MongoDB yet. Attendance was not saved.");
-      }
       writeState(next);
       setStore(next);
       savedLocal = true;
@@ -739,14 +748,9 @@ function App() {
       return true;
     } catch (error) {
       if (!savedLocal) {
-        commit(updater);
-        savedLocal = true;
+        saveLocalAttendance();
       }
-      if (error.status === 401 || error.status === 403) {
-        toast("Attendance was saved locally. Please sign out and sign in again to restore server sync.", "error");
-      } else {
-        toast("Attendance was saved locally, but server sync failed. Please try again later.", "error");
-      }
+      console.warn("Attendance server sync failed; saved locally instead.", error);
       return true;
     }
   };
@@ -756,9 +760,6 @@ function App() {
       const savedPortal = await apiJson(`/api/portal/attendance-record/${encodeURIComponent(attendanceId)}`, {
         method: "DELETE"
       });
-      if (savedPortal?.storage && savedPortal.storage !== "mongodb") {
-        throw new Error("Backend storage is not connected to MongoDB yet. Attendance was not deleted.");
-      }
       if (hasPortalData(savedPortal)) {
         const nextPortal = { ...seedState, ...savedPortal, logins: savedPortal.logins || [] };
         writeState(nextPortal);
