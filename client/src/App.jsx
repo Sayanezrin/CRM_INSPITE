@@ -685,7 +685,7 @@ function App() {
     refreshBackendHealth();
     healthInterval = window.setInterval(refreshBackendHealth, 10000);
     loadPortal();
-    portalInterval = window.setInterval(refreshPortalState, 5000);
+    portalInterval = window.setInterval(refreshPortalState, 1500);
     return () => {
       cancelled = true;
       window.clearTimeout(retryTimer);
@@ -720,6 +720,7 @@ function App() {
 
     let savedLocal = false;
     const saveLocalAttendance = () => {
+      if (savedLocal) return true;
       writeState(next);
       setStore(next);
       savedLocal = true;
@@ -731,7 +732,6 @@ function App() {
         method: "POST",
         body: JSON.stringify({ record: changedRecord })
       });
-      saveLocalAttendance();
       if (hasPortalData(savedPortal)) {
         const nextPortal = { ...seedState, ...savedPortal, logins: savedPortal.logins || [] };
         writeState(nextPortal);
@@ -740,6 +740,8 @@ function App() {
       window.setTimeout(refreshPortalState, 250);
       return true;
     };
+
+    saveLocalAttendance();
 
     try {
       if (session?.provider === "local-password" || String(session?.token || "").startsWith("local-")) {
