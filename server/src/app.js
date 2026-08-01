@@ -497,7 +497,11 @@ app.use(cors({
 app.use(express.json({ limit: "10mb" }));
 
 app.use((req, res, next) => {
-  const isPublicApi = req.path.startsWith("/api/auth") || req.path === "/api/bootstrap" || req.path.startsWith("/api/health") || req.path === "/api/ping";
+  const isPublicApi = req.path.startsWith("/api/auth")
+    || req.path.startsWith("/api/public")
+    || req.path === "/api/bootstrap"
+    || req.path.startsWith("/api/health")
+    || req.path === "/api/ping";
   if (!req.path.startsWith("/api") || isPublicApi) return next();
 
   const session = validateBearerToken(req.get("authorization"));
@@ -655,6 +659,26 @@ app.put("/api/portal", async (req, res, next) => {
 });
 
 app.post("/api/portal/attendance-record", async (req, res, next) => {
+  try {
+    const record = req.body?.record;
+    if (!record?.id || !record?.employeeId || !record?.date) {
+      return res.status(400).json({ error: "Attendance record is incomplete." });
+    }
+
+    const savedPortal = await savePortalAttendanceRecord({
+      ...record,
+      employeeName: String(record.employeeName || ""),
+      status: String(record.status || "Checked In"),
+      checkIn: String(record.checkIn || ""),
+      checkOut: String(record.checkOut || "")
+    });
+    res.json(savedPortal);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/public/attendance-record", async (req, res, next) => {
   try {
     const record = req.body?.record;
     if (!record?.id || !record?.employeeId || !record?.date) {

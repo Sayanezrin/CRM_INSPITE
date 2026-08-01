@@ -32,7 +32,8 @@ function today() {
 }
 
 function uid(prefix) {
-  return `${prefix}-${Date.now().toString().slice(-6)}`;
+  if (window.crypto?.randomUUID) return `${prefix}-${window.crypto.randomUUID()}`;
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function readState() {
@@ -710,35 +711,27 @@ function App() {
   };
 
   const commitAttendance = async (updater, attendanceRecord) => {
+    const next = typeof updater === "function" ? updater(store) : updater;
+    const changedRecord = attendanceRecord || findChangedAttendanceRecord(store.attendance, next.attendance);
+    if (!changedRecord) {
+      toast("No attendance change found.", "error");
+      return false;
+    }
+
     let savedLocal = false;
-    const saveLocalAttendance = (baseStore = store) => {
-      const next = typeof updater === "function" ? updater(baseStore) : updater;
+    const saveLocalAttendance = () => {
       writeState(next);
       setStore(next);
       savedLocal = true;
       return true;
     };
 
-    if (session?.provider === "local-password" || String(session?.token || "").startsWith("local-")) {
-      return saveLocalAttendance();
-    }
-
-    try {
-      const latest = attendanceRecord ? null : await apiJson("/api/portal");
-      const base = attendanceRecord
-        ? store
-        : hasPortalData(latest) ? { ...seedState, ...latest, logins: latest.logins || [] } : readState();
-      const next = typeof updater === "function" ? updater(base) : updater;
-      const changedRecord = attendanceRecord || findChangedAttendanceRecord(base.attendance, next.attendance);
-      if (!changedRecord) throw new Error("No attendance change found.");
-
-      const savedPortal = await apiJson("/api/portal/attendance-record", {
+    const saveSharedAttendance = async (path) => {
+      const savedPortal = await apiJson(path, {
         method: "POST",
         body: JSON.stringify({ record: changedRecord })
       });
-      writeState(next);
-      setStore(next);
-      savedLocal = true;
+      saveLocalAttendance();
       if (hasPortalData(savedPortal)) {
         const nextPortal = { ...seedState, ...savedPortal, logins: savedPortal.logins || [] };
         writeState(nextPortal);
@@ -746,7 +739,22 @@ function App() {
       }
       window.setTimeout(refreshPortalState, 250);
       return true;
+    };
+
+    try {
+      if (session?.provider === "local-password" || String(session?.token || "").startsWith("local-")) {
+        return await saveSharedAttendance("/api/public/attendance-record");
+      }
+
+      return await saveSharedAttendance("/api/portal/attendance-record");
     } catch (error) {
+      if (error.status === 401 || error.status === 403) {
+        try {
+          return await saveSharedAttendance("/api/public/attendance-record");
+        } catch (publicError) {
+          console.warn("Public attendance server sync failed; saved locally instead.", publicError);
+        }
+      }
       if (!savedLocal) {
         saveLocalAttendance();
       }
