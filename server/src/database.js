@@ -8,8 +8,31 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "..", ".env") });
 dns.setDefaultResultOrder("ipv4first");
 
-const mongoConnectionString = process.env.MONGODB_URI || process.env.MONGODB_CONNECTION_STRING || "";
-const mongoDirectConnectionString = process.env.MONGODB_DIRECT_URI || "";
+function normalizeMongoUri(uri) {
+  const value = String(uri || "").trim();
+  const protocolEnd = value.indexOf("://");
+  if (protocolEnd < 0) return value;
+
+  const authorityStart = protocolEnd + 3;
+  const pathStart = value.indexOf("/", authorityStart);
+  const authorityEnd = pathStart >= 0 ? pathStart : value.length;
+  const authority = value.slice(authorityStart, authorityEnd);
+  const hostSeparator = authority.lastIndexOf("@");
+  if (hostSeparator < 0 || authority.indexOf("@") === hostSeparator) return value;
+
+  const auth = authority.slice(0, hostSeparator);
+  const host = authority.slice(hostSeparator + 1);
+  const passwordSeparator = auth.indexOf(":");
+  if (passwordSeparator < 0) return value;
+
+  const username = auth.slice(0, passwordSeparator);
+  const password = auth.slice(passwordSeparator + 1);
+  const normalizedAuthority = `${username}:${encodeURIComponent(password)}@${host}`;
+  return `${value.slice(0, authorityStart)}${normalizedAuthority}${value.slice(authorityEnd)}`;
+}
+
+const mongoConnectionString = normalizeMongoUri(process.env.MONGODB_URI || process.env.MONGODB_CONNECTION_STRING || "");
+const mongoDirectConnectionString = normalizeMongoUri(process.env.MONGODB_DIRECT_URI || "");
 const configuredDatabaseName = process.env.MONGODB_DATABASE_NAME || "Inspite_people";
 const databaseName = configuredDatabaseName.trim().toLowerCase() === "inspite_people"
   ? "Inspite_people"
