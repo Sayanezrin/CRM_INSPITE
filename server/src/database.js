@@ -10,10 +10,13 @@ dns.setDefaultResultOrder("ipv4first");
 
 const mongoConnectionString = process.env.MONGODB_URI || process.env.MONGODB_CONNECTION_STRING || "";
 const mongoDirectConnectionString = process.env.MONGODB_DIRECT_URI || "";
-const databaseName = process.env.MONGODB_DATABASE_NAME || "inspite_people";
+const configuredDatabaseName = process.env.MONGODB_DATABASE_NAME || "Inspite_people";
+const databaseName = configuredDatabaseName.trim().toLowerCase() === "inspite_people"
+  ? "Inspite_people"
+  : configuredDatabaseName.trim();
 const portalCollectionName = process.env.MONGODB_PORTAL_COLLECTION || "portalState";
 const connectionTimeoutMs = Number(process.env.MONGODB_CONNECTION_TIMEOUT_MS || 30000);
-const dnsServers = (process.env.MONGODB_DNS_SERVERS || "")
+const dnsServers = (process.env.MONGODB_DNS_SERVERS || "8.8.8.8,1.1.1.1")
   .split(",")
   .map((server) => server.trim())
   .filter(Boolean);

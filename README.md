@@ -8,7 +8,7 @@ Set your MongoDB connection string first. Replace `<db_password>` with the real 
 
 ```powershell
 $env:MONGODB_CONNECTION_STRING="mongodb+srv://sayanezrin_db_user:<db_password>@cluster0.0cfjjgq.mongodb.net/?appName=Cluster0"
-$env:MONGODB_DATABASE_NAME="inspite_people"
+$env:MONGODB_DATABASE_NAME="Inspite_people"
 $env:MONGODB_PORTAL_COLLECTION="portalState"
 ```
 
@@ -26,7 +26,7 @@ npm run dev
 
 In local development, the React app expects the API at `http://localhost:5018`. In production on Vercel, the React app calls the same deployment through relative `/api` routes. If MongoDB is not configured, the dashboard portal data falls back to `server/App_Data/portal-store.json` for local development.
 
-The main dashboard data is stored in MongoDB database `inspite_people`, collection `portalState`. Replace `<db_password>` with the real MongoDB Atlas password before running the backend.
+The main dashboard data is stored in MongoDB database `Inspite_people`, collection `portalState`. Replace `<db_password>` with the real MongoDB Atlas password before running the backend.
 
 ## Vercel
 
@@ -41,7 +41,7 @@ Set these Vercel environment variables:
 
 ```text
 MONGODB_CONNECTION_STRING=...
-MONGODB_DATABASE_NAME=inspite_people
+MONGODB_DATABASE_NAME=Inspite_people
 MONGODB_PORTAL_COLLECTION=portalState
 APP_AUTH_SECRET=use-a-long-random-secret
 CORS_ORIGINS=https://your-vercel-domain.vercel.app
