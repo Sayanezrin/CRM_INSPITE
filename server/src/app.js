@@ -652,6 +652,10 @@ app.get("/api/portal", async (_req, res, next) => {
 
 app.get("/api/public/attendance", async (_req, res, next) => {
   try {
+    const models = await getModelsOrNull();
+    if (!models) {
+      return res.status(503).json({ error: "Shared database storage is required for attendance." });
+    }
     const portal = normalizePortalState(await getPortalState());
     res.json({
       employees: portal.employees || [],
@@ -672,6 +676,10 @@ app.put("/api/portal", async (req, res, next) => {
 
 app.post("/api/portal/attendance-record", async (req, res, next) => {
   try {
+    const models = await getModelsOrNull();
+    if (!models) {
+      return res.status(503).json({ error: "Shared database storage is required for attendance." });
+    }
     const record = req.body?.record;
     if (!record?.id || !record?.employeeId || !record?.date) {
       return res.status(400).json({ error: "Attendance record is incomplete." });
@@ -692,6 +700,10 @@ app.post("/api/portal/attendance-record", async (req, res, next) => {
 
 app.post("/api/public/attendance-record", async (req, res, next) => {
   try {
+    const models = await getModelsOrNull();
+    if (!models) {
+      return res.status(503).json({ error: "Shared database storage is required for attendance." });
+    }
     const record = req.body?.record;
     if (!record?.id || !record?.employeeId || !record?.date) {
       return res.status(400).json({ error: "Attendance record is incomplete." });

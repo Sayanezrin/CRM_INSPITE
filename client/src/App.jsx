@@ -225,7 +225,7 @@ async function savePortalState(value) {
       body: JSON.stringify(value)
     });
   } catch {
-    // Local storage remains the offline fallback when the API is unavailable.
+    toast("Saved on this device only. Connect shared database storage before employees use it on another device.", "error");
   }
 }
 
@@ -771,12 +771,9 @@ function App() {
       return false;
     }
 
-    let savedLocal = false;
     const saveLocalAttendance = () => {
-      if (savedLocal) return true;
       writeState(next);
       setStore(next);
-      savedLocal = true;
       return true;
     };
 
@@ -789,12 +786,12 @@ function App() {
         const nextPortal = { ...seedState, ...savedPortal, logins: savedPortal.logins || [] };
         writeState(nextPortal);
         setStore(nextPortal);
+      } else if (savedPortal?.attendanceRecord) {
+        saveLocalAttendance();
       }
       window.setTimeout(refreshPortalState, 250);
       return true;
     };
-
-    saveLocalAttendance();
 
     try {
       if (session?.provider === "local-password" || String(session?.token || "").startsWith("local-")) {
@@ -807,14 +804,14 @@ function App() {
         try {
           return await saveSharedAttendance("/api/public/attendance-record");
         } catch (publicError) {
-          console.warn("Public attendance server sync failed; saved locally instead.", publicError);
+          console.warn("Public attendance server sync failed.", publicError);
         }
       }
-      if (!savedLocal) {
-        saveLocalAttendance();
-      }
-      console.warn("Attendance server sync failed; saved locally instead.", error);
-      return true;
+      console.warn("Attendance server sync failed.", error);
+      toast(error.status === 503
+        ? "Attendance cannot be marked until shared database storage is connected."
+        : "Attendance was not saved to Admin records. Please try again.");
+      return false;
     }
   };
 
