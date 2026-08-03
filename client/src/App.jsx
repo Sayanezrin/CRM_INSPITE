@@ -417,67 +417,6 @@ function isWithinPeriod(value, period) {
   return date >= start && date <= end;
 }
 
-function getAttendanceStartDate(records = []) {
-  const dates = records
-    .map((record) => parseRecordDate(record.date))
-    .filter(Boolean)
-    .sort((a, b) => a - b);
-  return dates[0] || parseRecordDate(today());
-}
-
-function buildAttendanceRowsUntilToday(records = [], employees = []) {
-  const start = getAttendanceStartDate(records);
-  const end = parseRecordDate(today());
-  if (!start || !end) return records;
-
-  const employeesById = new Map();
-  for (const employee of employees) {
-    const id = employee.id || employee.employeeId;
-    if (!id) continue;
-    employeesById.set(String(id), {
-      id,
-      name: employee.name || employee.employeeName || "",
-      email: employee.email || ""
-    });
-  }
-  for (const record of records) {
-    const id = record.employeeId;
-    if (!id || employeesById.has(String(id))) continue;
-    employeesById.set(String(id), {
-      id,
-      name: record.employeeName || "",
-      email: record.userEmail || ""
-    });
-  }
-
-  const rows = [...records];
-  const existingDatesByEmployee = new Set(records.map((record) => `${record.employeeId}|${record.date}`));
-  for (const employee of employeesById.values()) {
-    for (const date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
-      const dateValue = dateInputValue(date);
-      const key = `${employee.id}|${dateValue}`;
-      if (existingDatesByEmployee.has(key)) continue;
-      rows.push({
-        id: `missing-${employee.id}-${dateValue}`,
-        employeeId: employee.id,
-        employeeName: employee.name,
-        userEmail: employee.email,
-        date: dateValue,
-        status: "Not Marked",
-        checkIn: "",
-        checkOut: "",
-        generatedMissing: true
-      });
-    }
-  }
-
-  return rows.sort((a, b) => (
-    String(b.date || "").localeCompare(String(a.date || ""))
-    || String(a.employeeName || "").localeCompare(String(b.employeeName || ""))
-    || String(b.checkIn || "").localeCompare(String(a.checkIn || ""))
-  ));
-}
-
 function distanceBetweenMeters(first, second) {
   const earthRadiusMeters = 6371000;
   const toRadians = (degrees) => degrees * Math.PI / 180;
@@ -802,6 +741,11 @@ function App() {
       window.clearInterval(portalInterval);
     };
   }, [session?.token]);
+
+  useEffect(() => {
+    if (!session?.token || activePage !== "attendance") return;
+    refreshPortalState();
+  }, [activePage, session?.token]);
 
   useEffect(() => {
     if (!session) return;
@@ -2458,15 +2402,13 @@ function AttendanceTable({ attendance, employees = [], title = "Attendance Recor
     ...employees.map((employee) => employee.name).filter(Boolean),
     ...normalizedAttendance.map((record) => record.employeeName).filter(Boolean)
   ])].sort((a, b) => a.localeCompare(b));
-  const attendanceThroughToday = buildAttendanceRowsUntilToday(normalizedAttendance, employees);
-  const filteredAttendance = attendanceThroughToday.filter((record) => (
+  const filteredAttendance = normalizedAttendance.filter((record) => (
     (!fromDate && !toDate ? true : isWithinDateRange(record.date, fromDate, toDate))
     && (!employeeName || record.employeeName === employeeName)
   ));
   const attendanceRows = filteredAttendance;
-  const reportRows = attendanceRows.filter((record) => !record.generatedMissing);
-  const weeklyRows = showReports ? buildAttendanceReportRows(reportRows, "weekly") : [];
-  const monthlyRows = showReports ? buildAttendanceReportRows(reportRows, "monthly") : [];
+  const weeklyRows = showReports ? buildAttendanceReportRows(attendanceRows, "weekly") : [];
+  const monthlyRows = showReports ? buildAttendanceReportRows(attendanceRows, "monthly") : [];
 
   const saveAttendanceEdit = async (updatedRecord) => {
     if (!onSaveAttendance) return;
@@ -2533,25 +2475,21 @@ function AttendanceTable({ attendance, employees = [], title = "Attendance Recor
               <span>{record.checkIn || "--"}</span>
               <span>{record.checkOut || "--"}</span>
               <span className="employee-action-buttons">
-                {record.generatedMissing ? "--" : (
-                  <>
-                    <button className="icon-action" type="button" aria-label={`Edit attendance for ${record.employeeName}`} title="Edit attendance" onClick={() => setEditingAttendance(record)}>
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M12 20h9" />
-                        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
-                      </svg>
-                    </button>
-                    <button className="icon-action danger" type="button" aria-label={`Delete attendance for ${record.employeeName}`} title="Delete attendance" onClick={() => deleteAttendanceRecord(record)}>
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M3 6h18" />
-                        <path d="M8 6V4h8v2" />
-                        <path d="M19 6l-1 14H6L5 6" />
-                        <path d="M10 11v5" />
-                        <path d="M14 11v5" />
-                      </svg>
-                    </button>
-                  </>
-                )}
+                <button className="icon-action" type="button" aria-label={`Edit attendance for ${record.employeeName}`} title="Edit attendance" onClick={() => setEditingAttendance(record)}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                  </svg>
+                </button>
+                <button className="icon-action danger" type="button" aria-label={`Delete attendance for ${record.employeeName}`} title="Delete attendance" onClick={() => deleteAttendanceRecord(record)}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M3 6h18" />
+                    <path d="M8 6V4h8v2" />
+                    <path d="M19 6l-1 14H6L5 6" />
+                    <path d="M10 11v5" />
+                    <path d="M14 11v5" />
+                  </svg>
+                </button>
               </span>
             </div>
           )) : <p className="empty-note">No records yet.</p>}
