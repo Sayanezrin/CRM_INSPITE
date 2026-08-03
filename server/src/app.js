@@ -165,14 +165,27 @@ async function writePortalFile(payload) {
 async function getPortalState() {
   const models = await getModelsOrNull();
   if (models) {
-    const document = await models.PortalState.findOne({ _id: "main" }).lean();
-    const portal = document?.dataJson ? JSON.parse(document.dataJson) : null;
-    const normalizedPortal = normalizePortalState(portal);
-    const attendance = await models.Attendance.find({}).sort({ date: -1, updatedAt: -1, _id: -1 }).lean();
+    let normalizedPortal = normalizePortalState(null);
+    try {
+      normalizedPortal = await getPortalDocumentState(models);
+    } catch (error) {
+      console.error("MongoDB portalState read failed; using empty portal fallback:", error.message);
+    }
+    let attendance = normalizedPortal.attendance || [];
+    try {
+      const attendanceDocuments = await retryMongoOperation(() => (
+        models.Attendance.find({}).sort({ date: -1, updatedAt: -1, _id: -1 }).lean()
+      ));
+      attendance = mergeAttendanceRecords(
+        normalizedPortal.attendance || [],
+        attendanceDocuments.map(toPortalAttendanceRecord)
+      );
+    } catch (error) {
+      console.error("MongoDB attendance read failed; using portalState attendance fallback:", error.message);
+    }
     return {
       ...normalizedPortal,
       attendance: attendance
-        .map(toPortalAttendanceRecord)
         .map((record) => normalizeAttendanceEmployee(record, normalizedPortal.employees))
     };
   }
@@ -186,6 +199,51 @@ function normalizePortalState(payload) {
     logins: payload?.logins || [],
     attendance: payload?.attendance || []
   };
+}
+
+function mergeAttendanceRecords(currentAttendance = [], sharedAttendance = []) {
+  const byId = new Map();
+  for (const record of currentAttendance || []) {
+    if (record?.id) byId.set(String(record.id), record);
+  }
+  for (const record of sharedAttendance || []) {
+    if (record?.id) byId.set(String(record.id), record);
+  }
+  return [...byId.values()].sort((first, second) => (
+    String(second.date || "").localeCompare(String(first.date || ""))
+    || String(second.checkIn || "").localeCompare(String(first.checkIn || ""))
+    || String(second.id || "").localeCompare(String(first.id || ""))
+  ));
+}
+
+async function writePortalDocument(models, payload) {
+  await retryMongoOperation(() => models.PortalState.updateOne(
+    { _id: "main" },
+    { $set: { dataJson: JSON.stringify(payload), savedAt: new Date() } },
+    { upsert: true }
+  ));
+}
+
+async function retryMongoOperation(operation, attempts = 3) {
+  let lastError;
+  for (let index = 0; index < attempts; index += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      const retryable = error?.errorLabelSet?.has?.("RetryableWriteError")
+        || error?.name === "MongoNetworkTimeoutError"
+        || error?.codeName === "HostUnreachable";
+      if (!retryable || index === attempts - 1) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 500 * (index + 1)));
+    }
+  }
+  throw lastError;
+}
+
+async function getPortalDocumentState(models) {
+  const document = await retryMongoOperation(() => models.PortalState.findOne({ _id: "main" }).lean());
+  return normalizePortalState(document?.dataJson ? JSON.parse(document.dataJson) : null);
 }
 
 function formatAttendanceTime(value) {
@@ -325,12 +383,10 @@ async function savePortalState(payload) {
 
 async function savePortalAttendanceRecord(record) {
   const models = await getModelsOrNull();
-  const currentPortal = normalizePortalState(await getPortalState());
+  const currentPortal = models ? normalizePortalState(null) : normalizePortalState(await getPortalState());
   const normalizedInput = normalizeAttendanceEmployee(record, currentPortal.employees);
   if (models) {
     const now = new Date();
-    const existing = await models.Attendance.findOne({ id: String(normalizedInput.id) }).lean();
-    const { _id, createdAt, ...existingRecord } = existing || {};
     const {
       _id: incomingId,
       createdAt: incomingCreatedAt,
@@ -338,30 +394,43 @@ async function savePortalAttendanceRecord(record) {
       ...incomingRecord
     } = normalizedInput;
     const savedRecord = {
-      ...existingRecord,
       ...incomingRecord,
       id: String(normalizedInput.id),
-      userEmail: String(normalizedInput.userEmail || existing?.userEmail || "").trim().toLowerCase(),
-      userName: normalizedInput.employeeName || normalizedInput.userName || existing?.userName || "",
-      employeeName: normalizedInput.employeeName || existing?.employeeName || normalizedInput.userName || "",
+      userEmail: String(normalizedInput.userEmail || "").trim().toLowerCase(),
+      userName: normalizedInput.employeeName || normalizedInput.userName || "",
+      employeeName: normalizedInput.employeeName || normalizedInput.userName || "",
       date: String(normalizedInput.date),
-      status: String(normalizedInput.status || existing?.status || "Checked In"),
-      checkIn: String(normalizedInput.checkIn || existing?.checkIn || ""),
+      status: String(normalizedInput.status || "Checked In"),
+      checkIn: String(normalizedInput.checkIn || ""),
       checkOut: String(normalizedInput.checkOut || ""),
-      checkInAt: existing?.checkInAt || now,
+      checkInAt: normalizedInput.checkInAt || now,
       checkOutAt: normalizedInput.checkOut ? now : null,
       updatedAt: now
     };
 
-    await models.Attendance.updateOne(
+    await retryMongoOperation(() => models.Attendance.updateOne(
       { id: savedRecord.id },
       { $set: savedRecord, $setOnInsert: { createdAt: now } },
       { upsert: true }
-    );
+    ));
+    const savedPortalRecord = toPortalAttendanceRecord(savedRecord);
+    try {
+      const currentPortalDocument = await getPortalDocumentState(models);
+      const nextPortal = {
+        ...currentPortalDocument,
+        attendance: mergeAttendanceRecords(
+          (currentPortalDocument.attendance || []).filter((item) => String(item.id) !== savedPortalRecord.id),
+          [savedPortalRecord]
+        )
+      };
+      await writePortalDocument(models, nextPortal);
+    } catch (error) {
+      console.error("MongoDB portalState attendance backup failed:", error.message);
+    }
     return {
       saved: true,
       storage: "mongodb",
-      attendanceRecord: toPortalAttendanceRecord(savedRecord),
+      attendanceRecord: savedPortalRecord,
       savedAt: now.toISOString()
     };
   }
@@ -389,7 +458,12 @@ async function deletePortalAttendanceRecord(recordId) {
 
   const models = await getModelsOrNull();
   if (models) {
-    await models.Attendance.deleteOne({ id });
+    await retryMongoOperation(() => models.Attendance.deleteOne({ id }));
+    const currentPortal = normalizePortalState(await getPortalState());
+    await writePortalDocument(models, {
+      ...currentPortal,
+      attendance: (currentPortal.attendance || []).filter((record) => String(record.id) !== id)
+    });
     return {
       ...(await getPortalState()),
       deleted: true,
