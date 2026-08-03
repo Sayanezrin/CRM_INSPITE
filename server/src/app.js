@@ -650,6 +650,18 @@ app.get("/api/portal", async (_req, res, next) => {
   }
 });
 
+app.get("/api/public/attendance", async (_req, res, next) => {
+  try {
+    const portal = normalizePortalState(await getPortalState());
+    res.json({
+      employees: portal.employees || [],
+      attendance: portal.attendance || []
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.put("/api/portal", async (req, res, next) => {
   try {
     res.json(await savePortalState(req.body));

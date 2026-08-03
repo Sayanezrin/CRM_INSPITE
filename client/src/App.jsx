@@ -74,6 +74,33 @@ function hasPortalData(value) {
   return Boolean(value?.employees && value?.ledger && value?.expenses && value?.leaves && value?.attendance);
 }
 
+function hasAttendanceData(value) {
+  return Array.isArray(value?.attendance);
+}
+
+function mergeAttendanceRecords(currentAttendance = [], sharedAttendance = []) {
+  const byId = new Map();
+  for (const record of currentAttendance) {
+    if (record?.id) byId.set(String(record.id), record);
+  }
+  for (const record of sharedAttendance) {
+    if (record?.id) byId.set(String(record.id), record);
+  }
+  return [...byId.values()].sort((a, b) => (
+    String(b.date || "").localeCompare(String(a.date || ""))
+    || String(b.checkIn || "").localeCompare(String(a.checkIn || ""))
+    || String(b.id || "").localeCompare(String(a.id || ""))
+  ));
+}
+
+function mergeSharedAttendance(currentStore, payload) {
+  return {
+    ...currentStore,
+    employees: Array.isArray(payload?.employees) && payload.employees.length ? payload.employees : currentStore.employees,
+    attendance: mergeAttendanceRecords(currentStore.attendance || [], payload?.attendance || [])
+  };
+}
+
 function readSession() {
   try {
     const saved = window.localStorage.getItem(SESSION_KEY);
@@ -654,17 +681,38 @@ function App() {
       return null;
     });
 
-  const refreshPortalState = () => apiJson("/api/portal")
+  const refreshSharedAttendance = () => apiJson("/api/public/attendance")
     .then((payload) => {
-      if (!hasPortalData(payload)) return null;
-      const nextPayload = { ...seedState, ...payload, logins: payload.logins || [] };
+      if (!hasAttendanceData(payload)) return null;
+      const nextPayload = mergeSharedAttendance(readState(), payload);
       setStore(nextPayload);
       writeState(nextPayload);
       return nextPayload;
     })
-    .catch(() => {
-      return null;
-    });
+    .catch(() => null);
+
+  const refreshPortalState = () => {
+    if (session?.provider === "local-password" || String(session?.token || "").startsWith("local-")) {
+      return refreshSharedAttendance();
+    }
+
+    return apiJson("/api/portal")
+      .then((payload) => {
+        if (!hasPortalData(payload)) return null;
+        const localPayload = readState();
+        const nextPayload = {
+          ...seedState,
+          ...localPayload,
+          ...payload,
+          logins: payload.logins || [],
+          attendance: mergeAttendanceRecords(localPayload.attendance || [], payload.attendance || [])
+        };
+        setStore(nextPayload);
+        writeState(nextPayload);
+        return nextPayload;
+      })
+      .catch(() => refreshSharedAttendance());
+  };
 
   useEffect(() => {
     if (!session?.token) return;
