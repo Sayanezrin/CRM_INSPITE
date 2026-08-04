@@ -1,4 +1,4 @@
-const CACHE_NAME = "inspite-people-v2";
+const CACHE_NAME = "inspite-people-v3";
 const APP_SHELL = ["/manifest.webmanifest", "/app-icon.svg"];
 
 self.addEventListener("install", (event) => {

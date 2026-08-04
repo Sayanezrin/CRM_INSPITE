@@ -193,6 +193,32 @@ async function getPortalState() {
   return readPortalFile();
 }
 
+async function getRecoveredPortalState() {
+  const models = await getModelsOrNull();
+  const portal = normalizePortalState(await getPortalState());
+  if (!models) return portal;
+
+  const [users, attendanceDocuments] = await Promise.all([
+    retryMongoOperation(() => models.PortalUser.find({}).lean()),
+    retryMongoOperation(() => models.Attendance.find({}).sort({ date: -1, updatedAt: -1, _id: -1 }).lean())
+  ]);
+  const logins = mergePortalRecords(
+    portal.logins || [],
+    users.map((user) => ({
+      id: `LOGIN-${user.email}`,
+      name: user.name || user.email,
+      email: user.email,
+      accessRole: normalizeRole(user.role),
+      status: user.status || "Active"
+    }))
+  );
+  const attendance = mergeAttendanceRecords(
+    portal.attendance || [],
+    attendanceDocuments.map(toPortalAttendanceRecord)
+  );
+  return normalizePortalState({ ...portal, logins, attendance });
+}
+
 function normalizePortalState(payload) {
   const normalized = {
     ...emptyPortalState,
@@ -840,6 +866,17 @@ app.post("/api/auth/google", async (req, res) => {
 app.get("/api/portal", async (_req, res, next) => {
   try {
     res.json(await getPortalState());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/portal/recover", async (req, res, next) => {
+  try {
+    if (req.session?.role !== "admin") return res.status(403).json({ error: "Only Admin can recover portal data." });
+    const models = await getModelsOrNull();
+    if (!models) return res.status(503).json({ error: "Shared database storage is required for recovery." });
+    res.json(await getRecoveredPortalState());
   } catch (error) {
     next(error);
   }

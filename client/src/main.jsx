@@ -11,8 +11,10 @@ createRoot(document.getElementById("root")).render(
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch(() => {
-      // The app remains usable when service workers are unavailable.
-    });
+    navigator.serviceWorker.register("/sw.js")
+      .then((registration) => registration.update().catch(() => null))
+      .catch(() => {
+        // The app remains usable when service workers are unavailable.
+      });
   });
 }

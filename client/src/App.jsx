@@ -762,21 +762,31 @@ function App() {
       return LOCAL_PASSWORD_FALLBACK_ENABLED ? refreshSharedAttendance() : Promise.resolve(null);
     }
 
+    const applyPortalPayload = (payload) => {
+      const localPayload = readState();
+      const nextPayload = ensureEmployeeProfilesForLogins({
+        ...seedState,
+        ...localPayload,
+        ...payload,
+        logins: mergeRecordsByIdOrEmail(localPayload.logins || [], payload.logins || []),
+        employees: mergeRecordsByIdOrEmail(localPayload.employees || [], payload.employees || []),
+        attendance: mergeAttendanceRecords(localPayload.attendance || [], payload.attendance || [])
+      });
+      setStore(nextPayload);
+      writeState(nextPayload);
+      return nextPayload;
+    };
+
     return apiJson("/api/portal")
       .then((payload) => {
         if (!hasPortalData(payload)) return null;
-        const localPayload = readState();
-        const nextPayload = ensureEmployeeProfilesForLogins({
-          ...seedState,
-          ...localPayload,
-          ...payload,
-          logins: mergeRecordsByIdOrEmail(localPayload.logins || [], payload.logins || []),
-          employees: mergeRecordsByIdOrEmail(localPayload.employees || [], payload.employees || []),
-          attendance: mergeAttendanceRecords(localPayload.attendance || [], payload.attendance || [])
-        });
-        setStore(nextPayload);
-        writeState(nextPayload);
-        return nextPayload;
+        const hasSharedEmployees = Array.isArray(payload.employees) && payload.employees.length > 0;
+        if (session?.role === "admin" && !hasSharedEmployees) {
+          return apiJson("/api/portal/recover")
+            .then((recoveredPayload) => hasPortalData(recoveredPayload) ? applyPortalPayload(recoveredPayload) : applyPortalPayload(payload))
+            .catch(() => applyPortalPayload(payload));
+        }
+        return applyPortalPayload(payload);
       })
       .catch((error) => {
         if (!LOCAL_PASSWORD_FALLBACK_ENABLED && (error.status === 401 || error.status === 403)) {
