@@ -141,6 +141,7 @@ function isAllowed(session, pathValue, method) {
   if (session.role === "hr") return !pathValue.startsWith("/api/candidates") || method !== "DELETE";
   if (session.role === "employee") {
     return (pathValue === "/api/portal" && method === "GET")
+      || (pathValue === "/api/portal/me" && method === "GET")
       || (pathValue === "/api/portal/attendance-record" && method === "POST")
       || pathValue.startsWith("/api/attendance")
       || pathValue.startsWith("/api/tasks");
@@ -397,6 +398,32 @@ function normalizeAttendanceEmployee(record, employees = []) {
     employeeId: employee.id,
     employeeName: employee.name || record.employeeName,
     userEmail: employee.email || record.userEmail || ""
+  };
+}
+
+function findEmployeeProfileForEmail(state, email) {
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  if (!normalizedEmail) return null;
+
+  const employee = (state.employees || []).find((item) => item.email?.trim().toLowerCase() === normalizedEmail);
+  if (employee) return employee;
+
+  const login = (state.logins || []).find((item) => item.email?.trim().toLowerCase() === normalizedEmail);
+  const loginProfile = employeeProfileFromLogin(login);
+  if (loginProfile) return loginProfile;
+
+  const attendanceRecord = (state.attendance || []).find((item) => item.userEmail?.trim().toLowerCase() === normalizedEmail);
+  if (!attendanceRecord) return null;
+  return {
+    id: attendanceRecord.employeeId || `LOGIN-${normalizedEmail}`,
+    name: attendanceRecord.employeeName || attendanceRecord.userName || normalizedEmail,
+    email: normalizedEmail,
+    accessRole: "employee",
+    department: "General",
+    role: roles.employee.title,
+    salary: 0,
+    status: "Active",
+    linkedFromAttendance: true
   };
 }
 
@@ -866,6 +893,21 @@ app.post("/api/auth/google", async (req, res) => {
 app.get("/api/portal", async (_req, res, next) => {
   try {
     res.json(await getPortalState());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/portal/me", async (req, res, next) => {
+  try {
+    const portal = await getRecoveredPortalState();
+    const employee = findEmployeeProfileForEmail(portal, req.session?.email);
+    if (!employee) return res.status(404).json({ error: "Employee profile was not found for this login." });
+    const email = String(req.session.email || "").trim().toLowerCase();
+    const attendance = (portal.attendance || [])
+      .map((record) => normalizeAttendanceEmployee(record, portal.employees))
+      .filter((record) => record.userEmail?.trim().toLowerCase() === email || record.employeeId === employee.id);
+    res.json({ employee, attendance });
   } catch (error) {
     next(error);
   }

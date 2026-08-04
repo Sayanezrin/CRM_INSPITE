@@ -115,6 +115,20 @@ function mergeSharedAttendance(currentStore, payload) {
   };
 }
 
+function mergeEmployeePortal(currentStore, payload) {
+  if (!payload?.employee) return currentStore;
+  const employeeEmail = payload.employee.email?.trim().toLowerCase();
+  const employees = [
+    payload.employee,
+    ...(currentStore.employees || []).filter((employee) => employee.email?.trim().toLowerCase() !== employeeEmail)
+  ];
+  return ensureEmployeeProfilesForLogins({
+    ...currentStore,
+    employees,
+    attendance: mergeAttendanceRecords(currentStore.attendance || [], payload.attendance || [])
+  });
+}
+
 function employeeIdForLogin(login) {
   const existingId = String(login.employeeId || "").trim();
   if (existingId) return existingId;
@@ -757,6 +771,14 @@ function App() {
     })
     .catch(() => null);
 
+  const refreshEmployeeProfile = () => apiJson("/api/portal/me")
+    .then((payload) => {
+      const nextPayload = mergeEmployeePortal(readState(), payload);
+      setStore(nextPayload);
+      writeState(nextPayload);
+      return nextPayload;
+    });
+
   const refreshPortalState = () => {
     if (session?.provider === "local-password" || String(session?.token || "").startsWith("local-")) {
       return LOCAL_PASSWORD_FALLBACK_ENABLED ? refreshSharedAttendance() : Promise.resolve(null);
@@ -786,7 +808,11 @@ function App() {
             .then((recoveredPayload) => hasPortalData(recoveredPayload) ? applyPortalPayload(recoveredPayload) : applyPortalPayload(payload))
             .catch(() => applyPortalPayload(payload));
         }
-        return applyPortalPayload(payload);
+        const nextPayload = applyPortalPayload(payload);
+        if (session?.role === "employee" && !getEmployeeForSession(nextPayload, session)) {
+          return refreshEmployeeProfile().catch(() => nextPayload);
+        }
+        return nextPayload;
       })
       .catch((error) => {
         if (!LOCAL_PASSWORD_FALLBACK_ENABLED && (error.status === 401 || error.status === 403)) {
@@ -794,6 +820,9 @@ function App() {
           setSession(null);
           toast("Please sign in again to load shared admin data.", "error");
           return null;
+        }
+        if (session?.role === "employee") {
+          return refreshEmployeeProfile().catch(() => refreshSharedAttendance());
         }
         return refreshSharedAttendance();
       });
