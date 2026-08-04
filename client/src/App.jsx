@@ -771,13 +771,15 @@ function App() {
     })
     .catch(() => null);
 
-  const refreshEmployeeProfile = () => apiJson("/api/portal/me")
-    .then((payload) => {
+  const applyEmployeeProfilePayload = (payload) => {
       const nextPayload = mergeEmployeePortal(readState(), payload);
       setStore(nextPayload);
       writeState(nextPayload);
       return nextPayload;
-    });
+  };
+
+  const refreshEmployeeProfile = () => apiJson("/api/portal/me")
+    .then(applyEmployeeProfilePayload);
 
   const refreshPortalState = () => {
     if (session?.provider === "local-password" || String(session?.token || "").startsWith("local-")) {
@@ -962,7 +964,7 @@ function App() {
       <main className="portal-main">
         <Header session={session} store={store} activePage={activePage} apiStatus={apiStatus} />
         {session.role === "employee" && <InstallAppNotice installPrompt={installPrompt} onPromptUsed={() => setInstallPrompt(null)} />}
-        <RolePage session={session} activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} />
+        <RolePage session={session} activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} onEmployeeProfileLoaded={applyEmployeeProfilePayload} />
       </main>
       <ToastHost />
     </div>
@@ -1231,10 +1233,10 @@ function Header({ session, store, activePage, apiStatus }) {
   );
 }
 
-function RolePage({ session, activePage, store, commit, commitAttendance, deleteAttendance }) {
+function RolePage({ session, activePage, store, commit, commitAttendance, deleteAttendance, onEmployeeProfileLoaded }) {
   if (session.role === "admin") return <AdminPage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} session={session} />;
   if (session.role === "hr") return <HrPage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} session={session} />;
-  return <EmployeePage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} session={session} />;
+  return <EmployeePage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} session={session} onEmployeeProfileLoaded={onEmployeeProfileLoaded} />;
 }
 
 function AdminPage({ activePage, store, commit, commitAttendance, deleteAttendance, session }) {
@@ -1256,9 +1258,9 @@ function HrPage({ activePage, store, commit, commitAttendance, deleteAttendance,
   return <DashboardGrid><FinancePanel store={store} canExport className="full-row-panel" /><ApprovalPanel title="Expense Approval Queue" items={store.expenses} kind="expenses" commit={commit} className="full-row-panel" /></DashboardGrid>;
 }
 
-function EmployeePage({ activePage, store, commit, commitAttendance, session }) {
+function EmployeePage({ activePage, store, commit, commitAttendance, session, onEmployeeProfileLoaded }) {
   const currentEmployee = getEmployeeForSession(store, session);
-  if (!currentEmployee) return <EmployeeProfileMissing session={session} />;
+  if (!currentEmployee) return <EmployeeProfileMissing session={session} onEmployeeProfileLoaded={onEmployeeProfileLoaded} />;
   if (activePage === "employees") return <DashboardGrid><EmployeeProfilePanel employee={currentEmployee} /></DashboardGrid>;
   if (activePage === "leave") return <DashboardGrid><LeaveFormPanel store={store} commit={commit} currentEmployee={currentEmployee} /><LeaveTable leaves={store.leaves.filter((item) => item.employeeId === currentEmployee.id)} /></DashboardGrid>;
   if (activePage === "expenses") return <DashboardGrid><ExpenseFormPanel store={store} commit={commit} currentEmployee={currentEmployee} /><ExpenseTable expenses={store.expenses.filter((item) => item.employeeId === currentEmployee.id)} /></DashboardGrid>;
@@ -1308,11 +1310,42 @@ function EmployeeProfilePanel({ employee }) {
   );
 }
 
-function EmployeeProfileMissing({ session }) {
+function EmployeeProfileMissing({ session, onEmployeeProfileLoaded }) {
+  const [loadingProfile, setLoadingProfile] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+
+  const loadEmployeeProfile = async () => {
+    setLoadingProfile(true);
+    setLoadFailed(false);
+    try {
+      const payload = await apiJson("/api/portal/me");
+      onEmployeeProfileLoaded(payload);
+    } catch {
+      setLoadFailed(true);
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+
+  useEffect(() => {
+    loadEmployeeProfile();
+  }, [session.email]);
+
   return (
     <DashboardGrid>
       <Panel title="Employee Profile Required" className="full-row-panel">
-        <p className="empty-note">No employee profile is registered for {session.email}. Ask Admin to add this employee in the Employee Directory first.</p>
+        <div className="empty-note">
+          {loadingProfile ? (
+            <p>Loading your employee profile...</p>
+          ) : loadFailed ? (
+            <>
+              <p>No employee profile is registered for {session.email}. Ask Admin to confirm this email in the Employee Directory.</p>
+              <button type="button" className="primary-button" onClick={loadEmployeeProfile}>Retry Profile Load</button>
+            </>
+          ) : (
+            <p>Loading your employee profile...</p>
+          )}
+        </div>
       </Panel>
     </DashboardGrid>
   );
