@@ -6,6 +6,7 @@ const SESSION_KEY = "inspite.people.role.session";
 const LOCAL_PASSWORDS_KEY = "inspite.people.local.passwords";
 const REMEMBERED_EMAIL_KEY = "inspite.people.remembered.email";
 const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://127.0.0.1:5018" : "");
+const LOCAL_PASSWORD_FALLBACK_ENABLED = import.meta.env.DEV || import.meta.env.VITE_ALLOW_LOCAL_PASSWORD_FALLBACK === "true";
 const CHECKIN_LOCATION = {
   latitude: Number(import.meta.env.VITE_CHECKIN_LATITUDE || 10.011327),
   longitude: Number(import.meta.env.VITE_CHECKIN_LONGITUDE || 76.3607931),
@@ -39,7 +40,7 @@ function uid(prefix) {
 function readState() {
   try {
     const saved = window.localStorage.getItem(STORAGE_KEY);
-    return saved ? { ...seedState, ...JSON.parse(saved) } : seedState;
+    return ensureEmployeeProfilesForLogins(saved ? { ...seedState, ...JSON.parse(saved) } : seedState);
   } catch {
     return seedState;
   }
@@ -112,6 +113,53 @@ function mergeSharedAttendance(currentStore, payload) {
     employees: Array.isArray(payload?.employees) && payload.employees.length ? payload.employees : currentStore.employees,
     attendance: mergeAttendanceRecords(currentStore.attendance || [], payload?.attendance || [])
   };
+}
+
+function employeeIdForLogin(login) {
+  const existingId = String(login.employeeId || "").trim();
+  if (existingId) return existingId;
+  return `LOGIN-${String(login.email || "").trim().toLowerCase()}`;
+}
+
+function employeeProfileFromLogin(login) {
+  const email = String(login.email || "").trim().toLowerCase();
+  if (!email || normalizeRole(login.accessRole) !== "employee") return null;
+  return {
+    id: employeeIdForLogin(login),
+    name: String(login.name || email).trim(),
+    email,
+    accessRole: "employee",
+    department: "General",
+    role: roles.employee.title,
+    salary: 0,
+    joinedAt: "",
+    birthday: "",
+    mobile: "",
+    alternativeNumber: "",
+    aadhaar: "",
+    pan: "",
+    uan: "",
+    experience: "",
+    qualification: "",
+    college: "",
+    address: "",
+    status: login.status || "Active",
+    linkedFromLogin: true
+  };
+}
+
+function ensureEmployeeProfilesForLogins(store) {
+  const employees = [...(store.employees || [])];
+  const employeeEmails = new Set(employees.map((employee) => employee.email?.trim().toLowerCase()).filter(Boolean));
+
+  for (const login of store.logins || []) {
+    const profile = employeeProfileFromLogin(login);
+    if (!profile || employeeEmails.has(profile.email)) continue;
+    employees.push(profile);
+    employeeEmails.add(profile.email);
+  }
+
+  return { ...store, employees };
 }
 
 function readSession() {
@@ -231,11 +279,12 @@ async function apiJson(path, options = {}) {
 }
 
 async function savePortalState(value) {
-  writeState(value);
+  const normalizedValue = ensureEmployeeProfilesForLogins(value);
+  writeState(normalizedValue);
   try {
     await apiJson("/api/portal", {
       method: "PUT",
-      body: JSON.stringify(value)
+      body: JSON.stringify(normalizedValue)
     });
   } catch {
     toast("Saved on this device only. Connect shared database storage before employees use it on another device.", "error");
@@ -706,21 +755,21 @@ function App() {
 
   const refreshPortalState = () => {
     if (session?.provider === "local-password" || String(session?.token || "").startsWith("local-")) {
-      return refreshSharedAttendance();
+      return LOCAL_PASSWORD_FALLBACK_ENABLED ? refreshSharedAttendance() : Promise.resolve(null);
     }
 
     return apiJson("/api/portal")
       .then((payload) => {
         if (!hasPortalData(payload)) return null;
         const localPayload = readState();
-        const nextPayload = {
+        const nextPayload = ensureEmployeeProfilesForLogins({
           ...seedState,
           ...localPayload,
           ...payload,
           logins: mergeRecordsByIdOrEmail(localPayload.logins || [], payload.logins || []),
           employees: mergeRecordsByIdOrEmail(localPayload.employees || [], payload.employees || []),
           attendance: mergeAttendanceRecords(localPayload.attendance || [], payload.attendance || [])
-        };
+        });
         setStore(nextPayload);
         writeState(nextPayload);
         return nextPayload;
@@ -770,15 +819,16 @@ function App() {
   const commit = (updater) => {
     setStore((current) => {
       const next = typeof updater === "function" ? updater(current) : updater;
-      savePortalState(next).then(() => {
+      const normalizedNext = ensureEmployeeProfilesForLogins(next);
+      savePortalState(normalizedNext).then(() => {
         window.setTimeout(refreshPortalState, 250);
       });
-      return next;
+      return normalizedNext;
     });
   };
 
   const commitAttendance = async (updater, attendanceRecord) => {
-    const next = typeof updater === "function" ? updater(store) : updater;
+    const next = ensureEmployeeProfilesForLogins(typeof updater === "function" ? updater(store) : updater);
     const changedRecord = attendanceRecord || findChangedAttendanceRecord(store.attendance, next.attendance);
     if (!changedRecord) {
       toast("No attendance change found.", "error");
@@ -797,7 +847,7 @@ function App() {
         body: JSON.stringify({ record: changedRecord })
       });
       if (hasPortalData(savedPortal)) {
-        const nextPortal = { ...seedState, ...savedPortal, logins: savedPortal.logins || [] };
+        const nextPortal = ensureEmployeeProfilesForLogins({ ...seedState, ...savedPortal, logins: savedPortal.logins || [] });
         writeState(nextPortal);
         setStore(nextPortal);
       } else if (savedPortal?.attendanceRecord) {
@@ -809,18 +859,12 @@ function App() {
 
     try {
       if (session?.provider === "local-password" || String(session?.token || "").startsWith("local-")) {
-        return await saveSharedAttendance("/api/public/attendance-record");
+        if (!LOCAL_PASSWORD_FALLBACK_ENABLED) throw new Error("Sign in again before marking attendance.");
+        return await saveSharedAttendance("/api/portal/attendance-record");
       }
 
       return await saveSharedAttendance("/api/portal/attendance-record");
     } catch (error) {
-      if (error.status === 401 || error.status === 403) {
-        try {
-          return await saveSharedAttendance("/api/public/attendance-record");
-        } catch (publicError) {
-          console.warn("Public attendance server sync failed.", publicError);
-        }
-      }
       console.warn("Attendance server sync failed.", error);
       toast(error.status === 503
         ? "Attendance cannot be marked until shared database storage is connected."
@@ -835,7 +879,7 @@ function App() {
         method: "DELETE"
       });
       if (hasPortalData(savedPortal)) {
-        const nextPortal = { ...seedState, ...savedPortal, logins: savedPortal.logins || [] };
+        const nextPortal = ensureEmployeeProfilesForLogins({ ...seedState, ...savedPortal, logins: savedPortal.logins || [] });
         writeState(nextPortal);
         setStore(nextPortal);
       } else {
@@ -932,7 +976,7 @@ function LoginScreen({ store, onLogin }) {
       toast("Signed in successfully.");
       onLogin({ ...login.user, token: login.token });
     } catch (error) {
-      const localLogin = getLocalPasswordLogin({ ...form, selectedRole, store });
+      const localLogin = LOCAL_PASSWORD_FALLBACK_ENABLED ? getLocalPasswordLogin({ ...form, selectedRole, store }) : null;
       if (localLogin) {
         writeRememberedEmail(form.email);
         toast("Signed in with local fallback storage.");
@@ -1350,18 +1394,20 @@ function AddLoginPanel({ commit }) {
       toast("Enter name and email before adding login.", "error");
       return;
     }
+    const loginRecord = {
+      id: uid("LOGIN"),
+      name: login.name.trim(),
+      email: login.email.trim().toLowerCase(),
+      accessRole: login.accessRole,
+      status: "Active"
+    };
+    const employeeProfile = employeeProfileFromLogin(loginRecord);
     commit((current) => ({
       ...current,
-      logins: [
-        {
-          id: uid("LOGIN"),
-          name: login.name.trim(),
-          email: login.email.trim().toLowerCase(),
-          accessRole: login.accessRole,
-          status: "Active"
-        },
-        ...(current.logins || [])
-      ]
+      logins: [loginRecord, ...(current.logins || [])],
+      employees: employeeProfile && !(current.employees || []).some((employee) => employee.email?.trim().toLowerCase() === employeeProfile.email)
+        ? [employeeProfile, ...(current.employees || [])]
+        : current.employees
     }));
     toast("Login access added.");
     setLogin(blankLogin);

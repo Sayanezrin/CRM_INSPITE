@@ -140,7 +140,8 @@ function isAllowed(session, pathValue, method) {
   if (session.role === "admin") return true;
   if (session.role === "hr") return !pathValue.startsWith("/api/candidates") || method !== "DELETE";
   if (session.role === "employee") {
-    return pathValue.startsWith("/api/portal")
+    return (pathValue === "/api/portal" && method === "GET")
+      || (pathValue === "/api/portal/attendance-record" && method === "POST")
       || pathValue.startsWith("/api/attendance")
       || pathValue.startsWith("/api/tasks");
   }
@@ -193,12 +194,13 @@ async function getPortalState() {
 }
 
 function normalizePortalState(payload) {
-  return {
+  const normalized = {
     ...emptyPortalState,
     ...(payload || {}),
     logins: payload?.logins || [],
     attendance: payload?.attendance || []
   };
+  return ensureEmployeeProfilesForLogins(normalized);
 }
 
 function mergeAttendanceRecords(currentAttendance = [], sharedAttendance = []) {
@@ -214,6 +216,53 @@ function mergeAttendanceRecords(currentAttendance = [], sharedAttendance = []) {
     || String(second.checkIn || "").localeCompare(String(first.checkIn || ""))
     || String(second.id || "").localeCompare(String(first.id || ""))
   ));
+}
+
+function employeeIdForLogin(login) {
+  const existingId = String(login.employeeId || "").trim();
+  if (existingId) return existingId;
+  return `LOGIN-${String(login.email || "").trim().toLowerCase()}`;
+}
+
+function employeeProfileFromLogin(login) {
+  const email = String(login.email || "").trim().toLowerCase();
+  if (!email || normalizeRole(login.accessRole) !== "employee") return null;
+  return {
+    id: employeeIdForLogin(login),
+    name: String(login.name || email).trim(),
+    email,
+    accessRole: "employee",
+    department: "General",
+    role: roles.employee.title,
+    salary: 0,
+    joinedAt: "",
+    birthday: "",
+    mobile: "",
+    alternativeNumber: "",
+    aadhaar: "",
+    pan: "",
+    uan: "",
+    experience: "",
+    qualification: "",
+    college: "",
+    address: "",
+    status: login.status || "Active",
+    linkedFromLogin: true
+  };
+}
+
+function ensureEmployeeProfilesForLogins(state) {
+  const employees = [...(state.employees || [])];
+  const employeeEmails = new Set(employees.map((employee) => employee.email?.trim().toLowerCase()).filter(Boolean));
+
+  for (const login of state.logins || []) {
+    const profile = employeeProfileFromLogin(login);
+    if (!profile || employeeEmails.has(profile.email)) continue;
+    employees.push(profile);
+    employeeEmails.add(profile.email);
+  }
+
+  return { ...state, employees };
 }
 
 function mergePortalRecords(currentRecords = [], incomingRecords = []) {
@@ -238,15 +287,16 @@ function mergePortalRecords(currentRecords = [], incomingRecords = []) {
 }
 
 function mergePortalState(currentState, incomingState) {
+  const nextState = ensureEmployeeProfilesForLogins(incomingState);
   return {
     ...currentState,
-    ...incomingState,
-    employees: mergePortalRecords(currentState.employees || [], incomingState.employees || []),
-    logins: mergePortalRecords(currentState.logins || [], incomingState.logins || []),
-    ledger: mergePortalRecords(currentState.ledger || [], incomingState.ledger || []),
-    expenses: mergePortalRecords(currentState.expenses || [], incomingState.expenses || []),
-    leaves: mergePortalRecords(currentState.leaves || [], incomingState.leaves || []),
-    attendance: mergeAttendanceRecords(currentState.attendance || [], incomingState.attendance || [])
+    ...nextState,
+    employees: nextState.employees || [],
+    logins: nextState.logins || [],
+    ledger: nextState.ledger || [],
+    expenses: nextState.expenses || [],
+    leaves: nextState.leaves || [],
+    attendance: mergeAttendanceRecords(currentState.attendance || [], nextState.attendance || [])
   };
 }
 
@@ -601,7 +651,6 @@ app.use(express.json({ limit: "10mb" }));
 
 app.use((req, res, next) => {
   const isPublicApi = req.path.startsWith("/api/auth")
-    || req.path.startsWith("/api/public")
     || req.path === "/api/bootstrap"
     || req.path.startsWith("/api/health")
     || req.path === "/api/ping";
