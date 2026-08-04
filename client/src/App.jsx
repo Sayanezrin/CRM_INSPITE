@@ -833,28 +833,13 @@ function App() {
   useEffect(() => {
     if (!session?.token) return;
     let cancelled = false;
-    let retryTimer;
-    let healthInterval;
-    let portalInterval;
-
-    const loadPortal = () => {
-      refreshPortalState()
-        .then((payload) => {
-          if (cancelled) return;
-          if (payload) return;
-          retryTimer = window.setTimeout(loadPortal, 3000);
-        });
-    };
 
     refreshBackendHealth();
-    healthInterval = window.setInterval(refreshBackendHealth, 10000);
-    loadPortal();
-    portalInterval = window.setInterval(refreshPortalState, 1500);
+    refreshPortalState().then(() => {
+      if (cancelled) return;
+    });
     return () => {
       cancelled = true;
-      window.clearTimeout(retryTimer);
-      window.clearInterval(healthInterval);
-      window.clearInterval(portalInterval);
     };
   }, [session?.token]);
 
