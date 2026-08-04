@@ -910,6 +910,22 @@ function App() {
       return true;
     };
 
+    const saveAttendanceFallback = async () => {
+      const isCheckOut = changedRecord.status === "Checked Out" || Boolean(changedRecord.checkOut);
+      await apiJson(isCheckOut ? "/api/attendance/check-out" : "/api/attendance/check-in", {
+        method: "POST",
+        body: JSON.stringify({
+          employeeId: changedRecord.employeeId,
+          userEmail: changedRecord.userEmail || session.email,
+          userName: changedRecord.employeeName || session.name,
+          status: changedRecord.status
+        })
+      });
+      saveLocalAttendance();
+      window.setTimeout(refreshPortalState, 250);
+      return true;
+    };
+
     try {
       if (session?.provider === "local-password" || String(session?.token || "").startsWith("local-")) {
         if (!LOCAL_PASSWORD_FALLBACK_ENABLED) throw new Error("Sign in again before marking attendance.");
@@ -919,6 +935,11 @@ function App() {
       return await saveSharedAttendance("/api/portal/attendance-record");
     } catch (error) {
       console.warn("Attendance server sync failed.", error);
+      try {
+        return await saveAttendanceFallback();
+      } catch (fallbackError) {
+        console.warn("Attendance fallback sync failed.", fallbackError);
+      }
       toast(error.status === 503
         ? "Attendance cannot be marked until shared database storage is connected."
         : "Attendance was not saved to Admin records. Please try again.");

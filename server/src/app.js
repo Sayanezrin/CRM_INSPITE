@@ -580,6 +580,19 @@ async function savePortalAttendanceRecord(record) {
   return next;
 }
 
+async function hydrateAttendanceRecordForSession(record, session) {
+  if (session?.role !== "employee") return record;
+  const portal = await getRecoveredPortalState();
+  const employee = findEmployeeProfileForEmail(portal, session.email);
+  if (!employee) return record;
+  return {
+    ...record,
+    employeeId: employee.id || record.employeeId,
+    employeeName: employee.name || record.employeeName || session.name,
+    userEmail: employee.email || session.email || record.userEmail
+  };
+}
+
 async function deletePortalAttendanceRecord(recordId) {
   const id = String(recordId || "").trim();
   if (!id) {
@@ -954,7 +967,7 @@ app.post("/api/portal/attendance-record", async (req, res, next) => {
     if (!models) {
       return res.status(503).json({ error: "Shared database storage is required for attendance." });
     }
-    const record = req.body?.record;
+    const record = await hydrateAttendanceRecordForSession(req.body?.record, req.session);
     if (!record?.id || !record?.employeeId || !record?.date) {
       return res.status(400).json({ error: "Attendance record is incomplete." });
     }
@@ -1143,7 +1156,7 @@ app.post("/api/attendance/check-in", async (req, res, next) => {
       checkInAt: new Date(),
       checkOutAt: null,
       workedSeconds: existing?.workedSeconds || 0,
-      status: "In"
+      status: req.body.status || "In"
     };
     await Attendance.create(record);
     res.status(201).location(`/api/attendance/${record.id}`).json(record);
