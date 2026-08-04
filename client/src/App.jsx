@@ -166,6 +166,10 @@ function readSession() {
   try {
     const saved = window.localStorage.getItem(SESSION_KEY);
     const session = saved ? JSON.parse(saved) : null;
+    if (!LOCAL_PASSWORD_FALLBACK_ENABLED && (session?.provider === "local-password" || String(session?.token || "").startsWith("local-"))) {
+      window.localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
     return session?.token ? session : null;
   } catch {
     return null;
@@ -774,7 +778,15 @@ function App() {
         writeState(nextPayload);
         return nextPayload;
       })
-      .catch(() => refreshSharedAttendance());
+      .catch((error) => {
+        if (!LOCAL_PASSWORD_FALLBACK_ENABLED && (error.status === 401 || error.status === 403)) {
+          writeSession(null);
+          setSession(null);
+          toast("Please sign in again to load shared admin data.", "error");
+          return null;
+        }
+        return refreshSharedAttendance();
+      });
   };
 
   useEffect(() => {
