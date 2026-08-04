@@ -11,8 +11,8 @@ createRoot(document.getElementById("root")).render(
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js")
-      .then((registration) => registration.update().catch(() => null))
+    navigator.serviceWorker.getRegistrations()
+      .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
       .catch(() => {
         // The app remains usable when service workers are unavailable.
       });
