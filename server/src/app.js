@@ -216,6 +216,40 @@ function mergeAttendanceRecords(currentAttendance = [], sharedAttendance = []) {
   ));
 }
 
+function mergePortalRecords(currentRecords = [], incomingRecords = []) {
+  const byKey = new Map();
+  for (const record of currentRecords || []) {
+    const key = record?.email
+      ? `email:${String(record.email).trim().toLowerCase()}`
+      : record?.id
+        ? `id:${String(record.id)}`
+        : null;
+    if (key) byKey.set(key, record);
+  }
+  for (const record of incomingRecords || []) {
+    const key = record?.email
+      ? `email:${String(record.email).trim().toLowerCase()}`
+      : record?.id
+        ? `id:${String(record.id)}`
+        : null;
+    if (key) byKey.set(key, { ...byKey.get(key), ...record });
+  }
+  return [...byKey.values()];
+}
+
+function mergePortalState(currentState, incomingState) {
+  return {
+    ...currentState,
+    ...incomingState,
+    employees: mergePortalRecords(currentState.employees || [], incomingState.employees || []),
+    logins: mergePortalRecords(currentState.logins || [], incomingState.logins || []),
+    ledger: mergePortalRecords(currentState.ledger || [], incomingState.ledger || []),
+    expenses: mergePortalRecords(currentState.expenses || [], incomingState.expenses || []),
+    leaves: mergePortalRecords(currentState.leaves || [], incomingState.leaves || []),
+    attendance: mergeAttendanceRecords(currentState.attendance || [], incomingState.attendance || [])
+  };
+}
+
 async function writePortalDocument(models, payload) {
   await retryMongoOperation(() => models.PortalState.updateOne(
     { _id: "main" },
@@ -315,11 +349,6 @@ async function syncPortalUsers(models, payload) {
       { upsert: true }
     );
   }
-  await models.PortalUser.deleteMany({
-    email: {
-      $nin: activeEmails
-    }
-  });
 }
 
 function toAttendanceDocument(record, now = new Date()) {
@@ -360,21 +389,21 @@ async function syncPortalAttendance(models, payload) {
     );
   }
 
-  if (activeIds.length) {
-    await models.Attendance.deleteMany({ id: { $nin: activeIds } });
-  }
 }
 
 async function savePortalState(payload) {
   const models = await getModelsOrNull();
   if (models) {
-    await syncPortalUsers(models, payload);
-    await syncPortalAttendance(models, payload);
-    await models.PortalState.updateOne(
-      { _id: "main" },
-      { $set: { dataJson: JSON.stringify(payload), savedAt: new Date() } },
-      { upsert: true }
-    );
+    let currentPortal = normalizePortalState(null);
+    try {
+      currentPortal = await getPortalDocumentState(models);
+    } catch (error) {
+      console.error("MongoDB portalState merge read failed; saving incoming payload only:", error.message);
+    }
+    const nextPayload = mergePortalState(currentPortal, normalizePortalState(payload));
+    await syncPortalUsers(models, nextPayload);
+    await syncPortalAttendance(models, nextPayload);
+    await writePortalDocument(models, nextPayload);
     return { saved: true, storage: "mongodb", savedAt: new Date().toISOString() };
   }
   await writePortalFile(payload);

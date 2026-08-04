@@ -93,6 +93,19 @@ function mergeAttendanceRecords(currentAttendance = [], sharedAttendance = []) {
   ));
 }
 
+function mergeRecordsByIdOrEmail(currentRecords = [], sharedRecords = []) {
+  const byKey = new Map();
+  for (const record of currentRecords) {
+    const key = record?.email ? `email:${String(record.email).trim().toLowerCase()}` : record?.id ? `id:${record.id}` : null;
+    if (key) byKey.set(key, record);
+  }
+  for (const record of sharedRecords) {
+    const key = record?.email ? `email:${String(record.email).trim().toLowerCase()}` : record?.id ? `id:${record.id}` : null;
+    if (key) byKey.set(key, { ...byKey.get(key), ...record });
+  }
+  return [...byKey.values()];
+}
+
 function mergeSharedAttendance(currentStore, payload) {
   return {
     ...currentStore,
@@ -704,7 +717,8 @@ function App() {
           ...seedState,
           ...localPayload,
           ...payload,
-          logins: payload.logins || [],
+          logins: mergeRecordsByIdOrEmail(localPayload.logins || [], payload.logins || []),
+          employees: mergeRecordsByIdOrEmail(localPayload.employees || [], payload.employees || []),
           attendance: mergeAttendanceRecords(localPayload.attendance || [], payload.attendance || [])
         };
         setStore(nextPayload);
