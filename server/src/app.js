@@ -699,6 +699,49 @@ app.post("/api/auth/change-password", async (req, res) => {
   res.json({ token: createToken(user), user });
 });
 
+app.post("/api/auth/reset-password", async (req, res) => {
+  const session = validateBearerToken(req.get("authorization"));
+  if (!session) return res.status(401).json({ error: "Authentication required." });
+  if (session.role !== "admin") return res.status(403).json({ error: "Only Admin can reset passwords." });
+
+  const email = String(req.body.email || "").trim().toLowerCase();
+  const role = normalizeRole(req.body.role || "employee");
+  if (!email) return res.status(400).json({ error: "Email is required." });
+
+  const models = await getModels();
+  if (!models) return res.status(503).json({ error: "MongoDB storage is required to reset passwords." });
+
+  const registered = await findRegisteredUser(email);
+  if (!registered || registered.role !== role) {
+    return res.status(404).json({ error: "Login user was not found for this dashboard." });
+  }
+
+  await models.PortalUser.updateOne(
+    { email },
+    {
+      $set: {
+        email,
+        name: registered.name || "",
+        role,
+        status: "Active",
+        mustChangePassword: true,
+        updatedAt: new Date()
+      },
+      $unset: {
+        passwordHash: "",
+        passwordChangedAt: ""
+      }
+    },
+    { upsert: true }
+  );
+
+  res.json({
+    reset: true,
+    email,
+    initialPassword: initialPasswordForUser({ name: registered.name, email })
+  });
+});
+
 app.post("/api/auth/google", async (req, res) => {
   if (!googleClientId) return res.status(401).json({ error: "Google client ID is missing on the server." });
   try {

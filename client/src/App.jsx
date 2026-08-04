@@ -1372,6 +1372,20 @@ function AddLoginPanel({ commit }) {
 function LoginAccessTable({ logins, commit, className = "" }) {
   const [editingLogin, setEditingLogin] = useState(null);
 
+  const resetLoginPassword = async (login) => {
+    const confirmed = window.confirm(`Reset password for ${login.email} to the initial password?`);
+    if (!confirmed) return;
+    try {
+      const payload = await apiJson("/api/auth/reset-password", {
+        method: "POST",
+        body: JSON.stringify({ email: login.email, role: login.accessRole })
+      });
+      toast(`Password reset. Initial password: ${payload.initialPassword}`);
+    } catch (error) {
+      toast(error.message || "Password reset failed.", "error");
+    }
+  };
+
   const deleteLogin = (loginId) => {
     commit((current) => ({
       ...current,
@@ -1414,6 +1428,14 @@ function LoginAccessTable({ logins, commit, className = "" }) {
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M12 20h9" />
                   <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                </svg>
+              </button>
+              <button className="icon-action" type="button" aria-label={`Reset password for ${login.email}`} title="Reset password" onClick={() => resetLoginPassword(login)}>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M15 7a4 4 0 1 1-3.46 6" />
+                  <path d="M12 13l-8 8" />
+                  <path d="M7 18l3 3" />
+                  <path d="M9 16l2 2" />
                 </svg>
               </button>
               <button className="icon-action danger" type="button" aria-label={`Delete ${login.email}`} title="Delete login" onClick={() => deleteLogin(login.id)}>
