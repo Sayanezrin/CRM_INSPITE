@@ -783,52 +783,55 @@ button:disabled {
 }
 
 .bill-preview-modal {
-  width: min(1180px, calc(100vw - 32px));
+  width: min(920px, calc(100vw - 32px));
   max-height: min(860px, calc(100vh - 40px));
 }
 
 .bill-preview-frame {
-  max-height: 620px;
+  width: min(100%, 794px);
+  max-height: 680px;
+  margin: 0 auto;
   overflow: auto;
   border: 1px solid #dbe3ee;
   background: #fff;
-  padding: 42px 52px;
+  padding: 49px 45px 26px;
   color: #202431;
+  box-sizing: border-box;
 }
 
 .bill-preview-frame header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 330px;
-  gap: 56px;
+  grid-template-columns: minmax(0, 1fr) 159px;
+  gap: 83px;
   align-items: start;
 }
 
 .bill-preview-frame .brand {
   display: grid;
-  gap: 18px;
+  gap: 34px;
   color: #687184;
-  font-size: 16px;
+  font-size: 9px;
 }
 
 .bill-preview-frame .brand img {
-  width: 220px;
+  width: 189px;
   height: auto;
 }
 
 .bill-preview-frame h1 {
   margin: 0;
   color: #202431;
-  font-size: 52px;
+  font-size: 30px;
   line-height: 1;
   text-align: right;
 }
 
 .bill-preview-frame h2 {
-  font-size: 13px;
+  font-size: 8px;
   text-transform: uppercase;
   letter-spacing: .32em;
   color: #bd2398;
-  margin: 0 0 8px;
+  margin: 0 0 4px;
 }
 
 .bill-preview-frame p {
@@ -839,8 +842,8 @@ button:disabled {
 .bill-preview-frame .company strong {
   display: block;
   color: #10233f;
-  font-size: 17px;
-  margin-bottom: 5px;
+  font-size: 9px;
+  margin-bottom: 3px;
 }
 
 .bill-preview-frame .invoice-title {
@@ -851,15 +854,20 @@ button:disabled {
 
 .bill-preview-frame .invoice-title p {
   color: #687184;
-  font-size: 16px;
+  font-size: 9px;
 }
 
 .bill-preview-frame .meta div,
 .bill-preview-frame .totals div {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  padding: 4px 0;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.bill-preview-frame .meta {
+  margin-top: 5px;
+  font-size: 7px;
 }
 
 .bill-preview-frame .meta span,
@@ -874,8 +882,8 @@ button:disabled {
 }
 
 .bill-preview-frame .divider {
-  height: 4px;
-  margin: 28px 0 24px;
+  height: 2px;
+  margin: 34px 0 19px;
   border-radius: 999px;
   background: linear-gradient(90deg, #bd2398, #3b78bf);
 }
@@ -883,52 +891,52 @@ button:disabled {
 .bill-preview-frame .section-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 30px;
-  margin: 0 0 28px;
+  gap: 19px;
+  margin: 0 0 19px;
 }
 
 .bill-preview-frame .box {
-  min-height: 128px;
+  min-height: 91px;
   border: 1px solid #e5dceb;
-  border-radius: 16px;
-  padding: 18px 24px;
+  border-radius: 8px;
+  padding: 19px;
 }
 
 .bill-preview-frame .box strong {
   color: #202431;
-  font-size: 20px;
+  font-size: 9px;
 }
 
 .bill-preview-frame .box p {
   color: #4f5a6d;
-  font-size: 16px;
+  font-size: 8px;
 }
 
 .bill-preview-frame .amount-due {
   background: linear-gradient(90deg, #fbedf8, #eef5ff);
   border: 1px solid #e5dceb;
-  border-radius: 18px;
+  border-radius: 8px;
   color: #202431;
-  padding: 22px 34px;
-  margin: 0 0 28px;
+  padding: 19px;
+  margin: 0 0 19px;
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 18px;
+  gap: 12px;
   align-items: center;
 }
 
 .bill-preview-frame .amount-copy strong {
   display: block;
   color: #bd2398;
-  font-size: 13px;
+  font-size: 8px;
   letter-spacing: .32em;
   text-transform: uppercase;
-  margin-bottom: 5px;
+  margin-bottom: 2px;
 }
 
 .bill-preview-frame .amount-copy span {
   color: #4f5a6d;
-  font-size: 16px;
+  font-size: 8px;
 }
 
 .bill-preview-frame .amount-total {
@@ -937,7 +945,7 @@ button:disabled {
 
 .bill-preview-frame .amount-total strong {
   color: #202431;
-  font-size: 42px;
+  font-size: 22px;
   line-height: 1;
 }
 
@@ -945,60 +953,79 @@ button:disabled {
   color: #3b78bf;
   font-style: normal;
   font-weight: 800;
-  font-size: 18px;
-  margin-left: 10px;
+  font-size: 9px;
+  margin-left: 5px;
 }
 
 .bill-preview-frame .amount-total span {
   display: block;
   color: #687184;
-  font-size: 17px;
-  margin-top: 8px;
+  font-size: 8px;
+  margin-top: 4px;
 }
 
 .bill-preview-frame table {
   width: 100%;
   border-collapse: collapse;
+  font-size: 7px;
 }
 
 .bill-preview-frame th,
 .bill-preview-frame td {
-  padding: 12px 10px;
-  border: 1px solid #e3e8ef;
+  padding: 11px 0;
+  border: 0;
+  border-bottom: 1px solid #e3e8ef;
   vertical-align: top;
 }
 
-.bill-preview-frame .serial {
-  width: 52px;
-  text-align: center;
+.bill-preview-frame th {
+  color: #687184;
+  font-size: 6px;
+  letter-spacing: .22em;
+  text-transform: uppercase;
 }
 
 .bill-preview-frame .amount {
   text-align: right;
   white-space: nowrap;
-  width: 145px;
+  width: 128px;
+}
+
+.bill-preview-frame .amount span {
+  display: block;
+  color: #687184;
+  font-size: 6px;
+  margin-top: 1px;
 }
 
 .bill-preview-frame .totals {
   margin-left: auto;
-  width: 390px;
-  margin-top: 14px;
-  border: 1px solid #dce4ef;
+  width: 170px;
+  margin-top: 19px;
+  border: 0;
+  border-bottom: 2px solid #bd2398;
+  font-size: 7px;
 }
 
 .bill-preview-frame footer {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 24px;
-  margin-top: 24px;
-  border-top: 1px solid #dbe3ee;
-  padding-top: 20px;
+  gap: 68px;
+  margin-top: 30px;
+  border-top: 0;
+  padding-top: 0;
+}
+
+.bill-preview-frame footer p {
+  font-size: 6px;
+  color: #4f5a6d;
 }
 
 .bill-preview-frame .signature {
-  margin-top: 24px;
-  text-align: right;
+  margin-top: 19px;
+  text-align: center;
   color: var(--muted);
+  font-size: 6px;
 }
 
 .approval-list {

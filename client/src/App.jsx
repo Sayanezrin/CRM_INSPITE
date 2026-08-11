@@ -1593,13 +1593,11 @@ function invoiceHtml(bill) {
     const inr = Number(item.amountInr || 0) || usd * exchangeRate;
     return `
     <tr>
-      <td class="serial">${index + 1}</td>
       <td>
         <strong>${escapeHtml(item.description)}</strong>
         <p>${escapeHtml(item.details)}</p>
       </td>
-      <td class="amount">${moneyUsd(usd)}</td>
-      <td class="amount">${invoiceMoneyInr(inr)}</td>
+      <td class="amount"><strong>${moneyUsd(usd)}</strong><span>${invoiceMoneyInr(inr)}</span></td>
     </tr>
   `;
   }).join("");
@@ -1609,45 +1607,46 @@ function invoiceHtml(bill) {
   <meta charset="utf-8">
   <title>${escapeHtml(bill.invoiceNo || "Invoice")}</title>
   <style>
-    @page{size:A4;margin:14mm}
+    @page{size:A4;margin:0}
     body{font-family:Arial,sans-serif;margin:0;color:#202431;background:#eef2f6}
-    .invoice{max-width:1120px;margin:24px auto;background:#fff;padding:54px 68px;border:1px solid #d7e0eb}
-    header{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:72px;align-items:start}
-    h1{margin:0;color:#202431;font-size:58px;line-height:1;font-weight:800;letter-spacing:0;text-align:right}
-    h2{font-size:13px;text-transform:uppercase;letter-spacing:.32em;color:#bd2398;margin:0 0 8px}
-    p{margin:4px 0;line-height:1.45}
-    .brand{display:grid;gap:22px;color:#687184;font-size:18px}
-    .brand img{width:260px;height:auto}
-    .company strong{display:block;color:#202431;font-size:18px;margin-bottom:5px}
-    .invoice-title{display:grid;gap:10px;justify-items:end}
-    .invoice-title p{color:#687184;font-size:16px}
-    .meta{width:100%;margin-top:16px}
-    .meta div,.totals div{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:4px 0}
+    .invoice{width:210mm;min-height:297mm;margin:24px auto;background:#fff;padding:13mm 12mm 7mm;box-sizing:border-box;border:1px solid #d7e0eb}
+    header{display:grid;grid-template-columns:minmax(0,1fr) 42mm;gap:22mm;align-items:start}
+    h1{margin:0;color:#202431;font-size:30px;line-height:1;font-weight:800;letter-spacing:0;text-align:right}
+    h2{font-size:8px;text-transform:uppercase;letter-spacing:.32em;color:#bd2398;margin:0 0 4px}
+    p{margin:2px 0;line-height:1.45}
+    .brand{display:grid;gap:9mm;color:#687184;font-size:9px}
+    .brand img{width:50mm;height:auto}
+    .company strong{display:block;color:#202431;font-size:9px;margin-bottom:3px}
+    .invoice-title{display:grid;gap:4px;justify-items:end}
+    .invoice-title p{color:#687184;font-size:9px}
+    .meta{width:100%;margin-top:5px;font-size:7px}
+    .meta div,.totals div{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:2px 0}
     .meta span,.totals span{color:#687184;text-align:right}
     .meta strong,.totals strong{text-align:right}
-    .divider{height:4px;margin:30px 0 24px;border-radius:999px;background:linear-gradient(90deg,#bd2398,#3b78bf)}
-    .section-grid{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin:0 0 28px}
-    .box{border:1px solid #e5dceb;border-radius:16px;padding:18px 24px;min-height:128px}
-    .box strong{font-size:21px;color:#202431}
-    .box p{color:#4f5a6d;font-size:17px}
-    .amount-due{background:linear-gradient(90deg,#fbedf8,#eef5ff);border:1px solid #e5dceb;border-radius:18px;padding:22px 34px;margin:0 0 28px;display:grid;grid-template-columns:1fr auto;gap:18px;align-items:center}
-    .amount-copy strong{display:block;color:#bd2398;font-size:13px;letter-spacing:.32em;margin-bottom:5px}
-    .amount-copy span{color:#4f5a6d;font-size:18px}
+    .divider{height:2px;margin:9mm 0 5mm;border-radius:999px;background:linear-gradient(90deg,#bd2398,#3b78bf)}
+    .section-grid{display:grid;grid-template-columns:1fr 1fr;gap:5mm;margin:0 0 5mm}
+    .box{border:1px solid #e5dceb;border-radius:8px;padding:5mm;min-height:24mm}
+    .box strong{font-size:9px;color:#202431}
+    .box p{color:#4f5a6d;font-size:8px}
+    .amount-due{background:linear-gradient(90deg,#fbedf8,#eef5ff);border:1px solid #e5dceb;border-radius:8px;padding:5mm;margin:0 0 5mm;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center}
+    .amount-copy strong{display:block;color:#bd2398;font-size:8px;letter-spacing:.32em;margin-bottom:2px;text-transform:uppercase}
+    .amount-copy span{color:#4f5a6d;font-size:8px}
     .amount-total{text-align:right}
-    .amount-total strong{display:inline-block;color:#202431;font-size:46px;line-height:1}
-    .amount-total em{color:#3b78bf;font-style:normal;font-weight:800;font-size:20px;margin-left:10px}
-    .amount-total span{display:block;color:#687184;font-size:18px;margin-top:9px}
-    table{width:100%;border-collapse:collapse;margin-top:14px}
-    th{background:#edf2f8;text-align:left;padding:11px;border:1px solid #dce4ef}
-    td{padding:13px 11px;border:1px solid #e3e9f1;vertical-align:top}
-    td p{color:#59667a}
-    .serial{width:52px;text-align:center}
-    .amount{text-align:right;white-space:nowrap;width:145px}
-    .totals{margin-left:auto;width:390px;margin-top:16px;border:1px solid #dce4ef}
-    .grand{font-size:18px;font-weight:700;background:#f6f9fd}
-    footer{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:26px;border-top:1px solid #dce4ef;padding-top:20px}
-    .signature{margin-top:28px;text-align:right;color:#59667a}
-    @media print{body{background:#fff}.invoice{margin:0;max-width:none;border:0;padding:0}.no-print{display:none}}
+    .amount-total strong{display:inline-block;color:#202431;font-size:22px;line-height:1}
+    .amount-total em{color:#3b78bf;font-style:normal;font-weight:800;font-size:9px;margin-left:5px}
+    .amount-total span{display:block;color:#687184;font-size:8px;margin-top:4px}
+    table{width:100%;border-collapse:collapse;margin-top:2mm;font-size:7px}
+    th{color:#687184;font-size:6px;letter-spacing:.22em;text-align:left;text-transform:uppercase;padding:3mm 0;border-bottom:1px solid #e3e9f1}
+    td{padding:4mm 0;border-bottom:1px solid #e3e9f1;vertical-align:top}
+    td p{color:#59667a;margin-top:2px}
+    .amount{text-align:right;white-space:nowrap;width:34mm}
+    .amount span{display:block;color:#687184;font-size:6px;margin-top:1px}
+    .totals{margin-left:auto;width:45mm;margin-top:5mm;font-size:7px;border-bottom:2px solid #bd2398}
+    .grand{font-size:13px;font-weight:700;color:#bd2398}
+    footer{display:grid;grid-template-columns:1fr 1fr;gap:18mm;margin-top:8mm;padding-top:5mm}
+    footer p{font-size:6px;color:#4f5a6d}
+    .signature{margin-top:5mm;text-align:center;color:#59667a;font-size:6px}
+    @media print{body{background:#fff}.invoice{margin:0;border:0}.no-print{display:none}}
   </style>
 </head>
 <body>
@@ -1698,7 +1697,7 @@ function invoiceHtml(bill) {
       </div>
     </section>
     <table>
-      <thead><tr><th class="serial">No.</th><th>Particulars</th><th class="amount">Amount USD</th><th class="amount">INR Equivalent</th></tr></thead>
+      <thead><tr><th>Description</th><th class="amount">Amount</th></tr></thead>
       <tbody>${itemRows}</tbody>
     </table>
     <section class="totals">
