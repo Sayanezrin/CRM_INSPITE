@@ -325,6 +325,10 @@ function moneyInr(value) {
   return `Rs. ${Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 }
 
+function invoiceMoneyInr(value) {
+  return `₹${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 function moneyUsd(value) {
   return `$${Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
@@ -1595,7 +1599,7 @@ function invoiceHtml(bill) {
         <p>${escapeHtml(item.details)}</p>
       </td>
       <td class="amount">${moneyUsd(usd)}</td>
-      <td class="amount">${moneyInr(inr)}</td>
+      <td class="amount">${invoiceMoneyInr(inr)}</td>
     </tr>
   `;
   }).join("");
@@ -1606,27 +1610,33 @@ function invoiceHtml(bill) {
   <title>${escapeHtml(bill.invoiceNo || "Invoice")}</title>
   <style>
     @page{size:A4;margin:14mm}
-    body{font-family:Arial,sans-serif;margin:0;color:#162033;background:#eef2f6}
-    .invoice{max-width:900px;margin:24px auto;background:#fff;padding:38px;border:1px solid #d7e0eb}
-    header{display:grid;grid-template-columns:1fr auto;gap:30px;align-items:start;border-bottom:3px solid #10233f;padding-bottom:20px}
-    h1{margin:0;color:#10233f;font-size:40px;letter-spacing:0}
-    h2{font-size:12px;text-transform:uppercase;color:#59667a;margin:0 0 8px}
+    body{font-family:Arial,sans-serif;margin:0;color:#202431;background:#eef2f6}
+    .invoice{max-width:1120px;margin:24px auto;background:#fff;padding:54px 68px;border:1px solid #d7e0eb}
+    header{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:72px;align-items:start}
+    h1{margin:0;color:#202431;font-size:58px;line-height:1;font-weight:800;letter-spacing:0;text-align:right}
+    h2{font-size:13px;text-transform:uppercase;letter-spacing:.32em;color:#bd2398;margin:0 0 8px}
     p{margin:4px 0;line-height:1.45}
-    .brand{display:grid;gap:8px}
-    .brand-line{display:flex;align-items:center;gap:14px}
-    .brand img{width:112px;height:auto}
-    .brand strong{font-size:22px;color:#10233f}
-    .meta{min-width:286px;border:1px solid #dce4ef}
-    .meta div,.totals div{display:grid;grid-template-columns:1fr 1fr;gap:14px;border-bottom:1px solid #e3e9f1;padding:8px 10px}
-    .meta div:last-child,.totals div:last-child{border-bottom:0}
-    .meta span,.totals span{color:#59667a}
+    .brand{display:grid;gap:22px;color:#687184;font-size:18px}
+    .brand img{width:260px;height:auto}
+    .company strong{display:block;color:#202431;font-size:18px;margin-bottom:5px}
+    .invoice-title{display:grid;gap:10px;justify-items:end}
+    .invoice-title p{color:#687184;font-size:16px}
+    .meta{width:100%;margin-top:16px}
+    .meta div,.totals div{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:4px 0}
+    .meta span,.totals span{color:#687184;text-align:right}
     .meta strong,.totals strong{text-align:right}
-    .section-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin:24px 0}
-    .box{border:1px solid #dce4ef;padding:14px;min-height:112px}
-    .supply-row{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:22px}
-    .supply-row .box{min-height:auto}
-    .amount-due{background:#10233f;color:#fff;padding:16px 18px;margin:22px 0;display:grid;grid-template-columns:1fr auto auto;gap:18px;align-items:center}
-    .amount-due strong{font-size:28px}
+    .divider{height:4px;margin:30px 0 24px;border-radius:999px;background:linear-gradient(90deg,#bd2398,#3b78bf)}
+    .section-grid{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin:0 0 28px}
+    .box{border:1px solid #e5dceb;border-radius:16px;padding:18px 24px;min-height:128px}
+    .box strong{font-size:21px;color:#202431}
+    .box p{color:#4f5a6d;font-size:17px}
+    .amount-due{background:linear-gradient(90deg,#fbedf8,#eef5ff);border:1px solid #e5dceb;border-radius:18px;padding:22px 34px;margin:0 0 28px;display:grid;grid-template-columns:1fr auto;gap:18px;align-items:center}
+    .amount-copy strong{display:block;color:#bd2398;font-size:13px;letter-spacing:.32em;margin-bottom:5px}
+    .amount-copy span{color:#4f5a6d;font-size:18px}
+    .amount-total{text-align:right}
+    .amount-total strong{display:inline-block;color:#202431;font-size:46px;line-height:1}
+    .amount-total em{color:#3b78bf;font-style:normal;font-weight:800;font-size:20px;margin-left:10px}
+    .amount-total span{display:block;color:#687184;font-size:18px;margin-top:9px}
     table{width:100%;border-collapse:collapse;margin-top:14px}
     th{background:#edf2f8;text-align:left;padding:11px;border:1px solid #dce4ef}
     td{padding:13px 11px;border:1px solid #e3e9f1;vertical-align:top}
@@ -1644,54 +1654,48 @@ function invoiceHtml(bill) {
   <main class="invoice">
     <header>
       <div class="brand">
-        <div class="brand-line">
-          <img src="${inspiteLogoImage}" alt="Inspite">
-          <div>
-            <h1>INVOICE</h1>
-            <strong>Tax Invoice / Bill of Services</strong>
-          </div>
-        </div>
+        <img src="${inspiteLogoImage}" alt="Inspite">
         <p>${escapeHtml(bill.companySummary || "Software development, AI infrastructure & cloud engineering services.")}</p>
+        <div class="company">
+          <strong>${escapeHtml(bill.companyName || "Inspite Technologies Private Limited")}</strong>
+          <p>${escapeHtml(bill.companyAddress || "").replace(/\n/g, "<br>")}</p>
+        </div>
       </div>
-      <div class="meta">
-        <div><span>Invoice No.</span><strong>${escapeHtml(bill.invoiceNo)}</strong></div>
-        <div><span>Invoice Date</span><strong>${escapeHtml(billDate(bill.invoiceDate))}</strong></div>
-        <div><span>Billing Period</span><strong>${escapeHtml(bill.billingPeriod)}</strong></div>
-        <div><span>Due Date</span><strong>${escapeHtml(bill.dueDate)}</strong></div>
-        <div><span>Exchange Rate</span><strong>1 USD = ${moneyInr(bill.exchangeRate)}</strong></div>
+      <div class="invoice-title">
+        <h1>INVOICE</h1>
+        <p>Tax Invoice / Bill of Services</p>
+        <div class="meta">
+          <div><span>Invoice No.</span><strong>${escapeHtml(bill.invoiceNo)}</strong></div>
+          <div><span>Invoice Date</span><strong>${escapeHtml(billDate(bill.invoiceDate))}</strong></div>
+          <div><span>Billing Period</span><strong>${escapeHtml(bill.billingPeriod)}</strong></div>
+          <div><span>Due Date</span><strong>${escapeHtml(bill.dueDate)}</strong></div>
+          <div><span>Exchange Rate</span><strong>1 USD = ${invoiceMoneyInr(bill.exchangeRate)}</strong></div>
+        </div>
       </div>
     </header>
+    <div class="divider"></div>
     <section class="section-grid">
-      <div class="box">
-        <h2>From</h2>
-        <p><strong>${escapeHtml(bill.companyName || "Inspite Technologies Private Limited")}</strong></p>
-        <p>${escapeHtml(bill.companyAddress || "").replace(/\n/g, "<br>")}</p>
-      </div>
       <div class="box">
         <h2>Bill To</h2>
         <p><strong>${escapeHtml(bill.clientName)}</strong></p>
         <p>${escapeHtml(bill.clientAddress).replace(/\n/g, "<br>")}</p>
       </div>
-    </section>
-    <section class="supply-row">
       <div class="box">
         <h2>Supply Type</h2>
-        <p>${escapeHtml(bill.supplyType)}</p>
-      </div>
-      <div class="box">
-        <h2>Place of Supply</h2>
-        <p>${escapeHtml(bill.placeOfSupply)}</p>
-      </div>
-      <div class="box">
-        <h2>Currency / Service Month</h2>
-        <p>${escapeHtml(bill.currency || "USD")}</p>
-        <p>${escapeHtml(bill.serviceMonth || bill.billingPeriod)}</p>
+        <p><strong>${escapeHtml(bill.supplyType)}</strong></p>
+        <p>Place of supply: ${escapeHtml(bill.placeOfSupply)}</p>
+        <p>Currency: ${escapeHtml(bill.currency || "USD")} (${invoiceMoneyInr(bill.exchangeRate)}/USD shown).</p>
       </div>
     </section>
     <section class="amount-due">
-      <span>Amount Due</span>
-      <strong>${moneyUsd(totals.totalUsd)}</strong>
-      <span>${moneyInr(totals.totalInr)} INR</span>
+      <div class="amount-copy">
+        <strong>Amount Due</strong>
+        <span>For services delivered in ${escapeHtml(bill.serviceMonth || bill.billingPeriod)}</span>
+      </div>
+      <div class="amount-total">
+        <strong>${moneyUsd(totals.totalUsd)}</strong><em>${escapeHtml(bill.currency || "USD")}</em>
+        <span>${invoiceMoneyInr(totals.totalInr)} INR</span>
+      </div>
     </section>
     <table>
       <thead><tr><th class="serial">No.</th><th>Particulars</th><th class="amount">Amount USD</th><th class="amount">INR Equivalent</th></tr></thead>
@@ -1701,7 +1705,7 @@ function invoiceHtml(bill) {
       <div><span>Subtotal</span><strong>${moneyUsd(totals.subtotalUsd)}</strong></div>
       <div><span>IGST (export under LUT)</span><strong>${moneyUsd(totals.igstUsd)}</strong></div>
       <div class="grand"><span>Total Due</span><strong>${moneyUsd(totals.totalUsd)}</strong></div>
-      <div><span>INR Equivalent</span><strong>${moneyInr(totals.totalInr)}</strong></div>
+      <div><span>INR Equivalent</span><strong>${invoiceMoneyInr(totals.totalInr)}</strong></div>
     </section>
     <footer>
       <div><h2>Payment Terms</h2><p>${escapeHtml(bill.paymentTerms)}</p></div>
@@ -1721,8 +1725,10 @@ function openBillForPrint(bill) {
   }
   win.document.write(invoiceHtml(bill));
   win.document.close();
-  win.focus();
-  win.print();
+  win.onload = () => {
+    win.focus();
+    win.print();
+  };
 }
 
 function downloadBillHtml(bill) {
