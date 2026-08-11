@@ -1717,17 +1717,42 @@ function invoiceHtml(bill) {
 }
 
 function openBillForPrint(bill) {
-  const win = window.open("", "_blank", "noopener,noreferrer");
-  if (!win) {
-    toast("Allow popups to print this bill.", "error");
+  const existingFrame = document.getElementById("bill-print-frame");
+  if (existingFrame) existingFrame.remove();
+  const frame = document.createElement("iframe");
+  frame.id = "bill-print-frame";
+  frame.title = "Bill print frame";
+  frame.style.position = "fixed";
+  frame.style.right = "0";
+  frame.style.bottom = "0";
+  frame.style.width = "0";
+  frame.style.height = "0";
+  frame.style.border = "0";
+  frame.style.opacity = "0";
+  document.body.appendChild(frame);
+
+  const printFrame = () => {
+    const printWindow = frame.contentWindow;
+    if (!printWindow) {
+      toast("Unable to prepare bill for printing.", "error");
+      frame.remove();
+      return;
+    }
+    printWindow.focus();
+    printWindow.print();
+    setTimeout(() => frame.remove(), 1500);
+  };
+
+  frame.onload = () => setTimeout(printFrame, 300);
+  const printDocument = frame.contentDocument || frame.contentWindow?.document;
+  if (!printDocument) {
+    toast("Unable to prepare bill for printing.", "error");
+    frame.remove();
     return;
   }
-  win.document.write(invoiceHtml(bill));
-  win.document.close();
-  win.onload = () => {
-    win.focus();
-    win.print();
-  };
+  printDocument.open();
+  printDocument.write(invoiceHtml(bill));
+  printDocument.close();
 }
 
 function downloadBillHtml(bill) {
