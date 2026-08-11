@@ -27,7 +27,8 @@ const emptyPortalState = {
   ledger: [],
   expenses: [],
   leaves: [],
-  attendance: []
+  attendance: [],
+  bills: []
 };
 
 const employee = {
@@ -199,9 +200,10 @@ async function getRecoveredPortalState() {
   const portal = normalizePortalState(await getPortalState());
   if (!models) return portal;
 
-  const [users, attendanceDocuments] = await Promise.all([
+  const [users, attendanceDocuments, billDocuments] = await Promise.all([
     retryMongoOperation(() => models.PortalUser.find({}).lean()),
-    retryMongoOperation(() => models.Attendance.find({}).sort({ date: -1, updatedAt: -1, _id: -1 }).lean())
+    retryMongoOperation(() => models.Attendance.find({}).sort({ date: -1, updatedAt: -1, _id: -1 }).lean()),
+    models.Bill ? retryMongoOperation(() => models.Bill.find({}).sort({ invoiceDate: -1, updatedAt: -1, _id: -1 }).lean()) : []
   ]);
   const logins = mergePortalRecords(
     portal.logins || [],
@@ -217,7 +219,8 @@ async function getRecoveredPortalState() {
     portal.attendance || [],
     attendanceDocuments.map(toPortalAttendanceRecord)
   );
-  return normalizePortalState({ ...portal, logins, attendance });
+  const bills = mergePortalRecords(portal.bills || [], billDocuments || []);
+  return normalizePortalState({ ...portal, logins, attendance, bills });
 }
 
 function normalizePortalState(payload) {
@@ -225,7 +228,8 @@ function normalizePortalState(payload) {
     ...emptyPortalState,
     ...(payload || {}),
     logins: payload?.logins || [],
-    attendance: payload?.attendance || []
+    attendance: payload?.attendance || [],
+    bills: payload?.bills || []
   };
   return ensureEmployeeProfilesForLogins(normalized);
 }
@@ -323,6 +327,7 @@ function mergePortalState(currentState, incomingState) {
     ledger: nextState.ledger || [],
     expenses: nextState.expenses || [],
     leaves: nextState.leaves || [],
+    bills: nextState.bills || [],
     attendance: mergeAttendanceRecords(currentState.attendance || [], nextState.attendance || [])
   };
 }
@@ -494,6 +499,46 @@ async function syncPortalAttendance(models, payload) {
 
 }
 
+function toBillDocument(record, now = new Date()) {
+  return {
+    ...record,
+    id: String(record.id),
+    invoiceNo: String(record.invoiceNo || ""),
+    invoiceDate: String(record.invoiceDate || ""),
+    billingPeriod: String(record.billingPeriod || ""),
+    dueDate: String(record.dueDate || ""),
+    clientName: String(record.clientName || ""),
+    clientAddress: String(record.clientAddress || ""),
+    supplyType: String(record.supplyType || ""),
+    placeOfSupply: String(record.placeOfSupply || ""),
+    currency: String(record.currency || "USD"),
+    exchangeRate: Number(record.exchangeRate || 0),
+    subtotalUsd: Number(record.subtotalUsd || 0),
+    totalUsd: Number(record.totalUsd || 0),
+    totalInr: Number(record.totalInr || 0),
+    status: String(record.status || "Draft"),
+    updatedAt: now
+  };
+}
+
+async function syncPortalBills(models, payload) {
+  if (!models?.Bill || !Array.isArray(payload.bills)) return;
+  const now = new Date();
+
+  for (const record of payload.bills) {
+    if (!record?.id) continue;
+    const savedRecord = toBillDocument(record, now);
+    await models.Bill.updateOne(
+      { id: savedRecord.id },
+      {
+        $set: savedRecord,
+        $setOnInsert: { createdAt: now }
+      },
+      { upsert: true }
+    );
+  }
+}
+
 async function savePortalState(payload) {
   const models = await getModelsOrNull();
   if (models) {
@@ -506,6 +551,7 @@ async function savePortalState(payload) {
     const nextPayload = mergePortalState(currentPortal, normalizePortalState(payload));
     await syncPortalUsers(models, nextPayload);
     await syncPortalAttendance(models, nextPayload);
+    await syncPortalBills(models, nextPayload);
     await writePortalDocument(models, nextPayload);
     return { saved: true, storage: "mongodb", savedAt: new Date().toISOString() };
   }

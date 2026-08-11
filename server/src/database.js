@@ -143,13 +143,34 @@ function createModels(connection) {
     status: String
   }, { collection: "Attendance", versionKey: false, strict: false });
 
+  const billSchema = new mongoose.Schema({
+    id: { type: String, index: true, unique: true },
+    invoiceNo: { type: String, index: true },
+    invoiceDate: String,
+    billingPeriod: String,
+    dueDate: String,
+    clientName: String,
+    clientAddress: String,
+    supplyType: String,
+    placeOfSupply: String,
+    currency: String,
+    exchangeRate: Number,
+    subtotalUsd: Number,
+    totalUsd: Number,
+    totalInr: Number,
+    status: String,
+    createdBy: String,
+    updatedAt: Date
+  }, { collection: "Bills", versionKey: false, strict: false });
+
   return {
     PortalState: connection.model("PortalState", portalStateSchema),
     PortalUser: connection.model("PortalUser", portalUserSchema),
     TimeLog: connection.model("TimeLog", timeLogSchema),
     Task: connection.model("Task", taskSchema),
     Candidate: connection.model("Candidate", candidateSchema),
-    Attendance: connection.model("Attendance", attendanceSchema)
+    Attendance: connection.model("Attendance", attendanceSchema),
+    Bill: connection.model("Bill", billSchema)
   };
 }
 

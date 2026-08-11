@@ -25,7 +25,8 @@ const seedState = {
   ledger: [],
   expenses: [],
   leaves: [],
-  attendance: []
+  attendance: [],
+  bills: []
 };
 
 function today() {
@@ -318,6 +319,38 @@ function findChangedAttendanceRecord(previousAttendance = [], nextAttendance = [
 
 function money(value) {
   return `Rs. ${Number(value || 0).toLocaleString("en-IN")}`;
+}
+
+function moneyInr(value) {
+  return `Rs. ${Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+}
+
+function moneyUsd(value) {
+  return `$${Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function calculateBillTotals(bill) {
+  const exchangeRate = Number(bill.exchangeRate || 0);
+  const subtotalUsd = (bill.items || []).reduce((sum, item) => sum + Number(item.amountUsd || 0), 0);
+  const subtotalInr = (bill.items || []).reduce((sum, item) => sum + Number(item.amountInr || 0), 0);
+  const igstUsd = Number(bill.igstUsd || 0);
+  const totalUsd = subtotalUsd + igstUsd;
+  const totalInr = subtotalInr || totalUsd * exchangeRate;
+  return { subtotalUsd, igstUsd, totalUsd, totalInr };
+}
+
+function nextInvoiceNumber(bills = []) {
+  const year = new Date().getFullYear();
+  const latest = bills
+    .map((bill) => String(bill.invoiceNo || "").match(/INS-\d{4}-\d{2}-(\d+)/)?.[1])
+    .filter(Boolean)
+    .map(Number)
+    .reduce((max, value) => Math.max(max, value), 0);
+  return `INS-${year}-${String(new Date().getMonth() + 1).padStart(2, "0")}-${String(latest + 1).padStart(3, "0")}`;
+}
+
+function billFilename(bill) {
+  return `${String(bill.invoiceNo || bill.id || "invoice").replace(/[^a-z0-9-]+/gi, "_")}.html`;
 }
 
 const financePrimaryColumns = [
@@ -1180,6 +1213,7 @@ const navItems = [
   { id: "logins", label: "Add Login", roles: ["admin"] },
   { id: "employees", label: "Employees" },
   { id: "finance", label: "Finance", roles: ["admin", "hr"] },
+  { id: "billing", label: "Billing", roles: ["admin", "hr"] },
   { id: "leave", label: "Leave" },
   { id: "expenses", label: "Expenses" },
   { id: "attendance", label: "Attendance" }
@@ -1249,6 +1283,7 @@ function AdminPage({ activePage, store, commit, commitAttendance, deleteAttendan
   if (activePage === "logins") return <DashboardGrid><AddLoginPanel commit={commit} /><LoginAccessTable logins={store.logins || []} commit={commit} className="full-row-panel" /></DashboardGrid>;
   if (activePage === "employees") return <DashboardGrid><AddEmployeePanel commit={commit} /><EmployeeTable employees={store.employees} commit={commit} canDelete className="full-row-panel" /></DashboardGrid>;
   if (activePage === "finance") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} createdBy="Admin" title="Add Debit Expense" /><FinancePanel store={store} commit={commit} canManage canExport className="full-row-panel" /></DashboardGrid>;
+  if (activePage === "billing") return <BillingPage store={store} commit={commit} createdBy="Admin" />;
   if (activePage === "leave") return <DashboardGrid><ApprovalPanel title="Leave Applications" items={store.leaves} kind="leaves" commit={commit} /><LeaveTable leaves={store.leaves} /></DashboardGrid>;
   if (activePage === "expenses") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} /><ApprovalPanel title="Expense Approvals" items={store.expenses} kind="expenses" commit={commit} className="full-row-panel" /><ExpenseTable expenses={store.expenses} className="full-row-panel" /></DashboardGrid>;
   if (activePage === "attendance") return <AttendancePage store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} session={session} />;
@@ -1261,6 +1296,7 @@ function HrPage({ activePage, store, commit, commitAttendance, deleteAttendance,
   if (activePage === "expenses") return <DashboardGrid><ApprovalPanel title="Expense Approval Queue" items={store.expenses} kind="expenses" commit={commit} /><ExpenseTable expenses={store.expenses} /></DashboardGrid>;
   if (activePage === "attendance") return <AttendancePage store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} session={session} />;
   if (activePage === "finance") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} createdBy="HR" title="Add Debit Expense" /><FinancePanel store={store} canExport className="full-row-panel" /></DashboardGrid>;
+  if (activePage === "billing") return <BillingPage store={store} commit={commit} createdBy="Accountant" />;
   return <DashboardGrid><FinancePanel store={store} canExport className="full-row-panel" /><ApprovalPanel title="Expense Approval Queue" items={store.expenses} kind="expenses" commit={commit} className="full-row-panel" /></DashboardGrid>;
 }
 
@@ -1471,6 +1507,334 @@ function EmployeeHome({ store, commit, commitAttendance, currentEmployee }) {
       <LeaveFormPanel store={store} commit={commit} currentEmployee={currentEmployee} />
       <ExpenseFormPanel store={store} commit={commit} currentEmployee={currentEmployee} />
     </DashboardGrid>
+  );
+}
+
+const defaultBillItems = [
+  {
+    id: "ITEM-1",
+    description: "Development Services & Salaries",
+    details: "Design, development, integration and delivery across the platform.",
+    amountUsd: "",
+    amountInr: ""
+  }
+];
+
+function blankBill(store) {
+  return {
+    id: uid("BILL"),
+    invoiceNo: nextInvoiceNumber(store.bills || []),
+    invoiceDate: today(),
+    billingPeriod: "",
+    dueDate: "On receipt",
+    exchangeRate: 94.9,
+    clientName: "",
+    clientAddress: "",
+    supplyType: "Export of Services",
+    placeOfSupply: "Outside India",
+    currency: "USD",
+    serviceMonth: "",
+    paymentTerms: "Payable on receipt via bank transfer. Please reference invoice no. with your remittance.",
+    notes: "Supply meant for export under LUT without payment of IGST. INR equivalents are indicative at the stated exchange rate.",
+    status: "Draft",
+    items: defaultBillItems
+  };
+}
+
+function normalizeBillForSave(bill, createdBy) {
+  const totals = calculateBillTotals(bill);
+  return {
+    ...bill,
+    invoiceNo: String(bill.invoiceNo || "").trim(),
+    clientName: String(bill.clientName || "").trim(),
+    clientAddress: String(bill.clientAddress || "").trim(),
+    billingPeriod: String(bill.billingPeriod || "").trim(),
+    serviceMonth: String(bill.serviceMonth || "").trim(),
+    exchangeRate: Number(bill.exchangeRate || 0),
+    items: (bill.items || []).map((item) => ({
+      ...item,
+      description: String(item.description || "").trim(),
+      details: String(item.details || "").trim(),
+      amountUsd: Number(item.amountUsd || 0),
+      amountInr: Number(item.amountInr || 0)
+    })),
+    ...totals,
+    createdBy,
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function invoiceHtml(bill) {
+  const totals = calculateBillTotals(bill);
+  const itemRows = (bill.items || []).map((item) => `
+    <tr>
+      <td>
+        <strong>${escapeHtml(item.description)}</strong>
+        <p>${escapeHtml(item.details)}</p>
+      </td>
+      <td>
+        <strong>${moneyUsd(item.amountUsd)}</strong>
+        <span>${moneyInr(item.amountInr || Number(item.amountUsd || 0) * Number(bill.exchangeRate || 0))}</span>
+      </td>
+    </tr>
+  `).join("");
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHtml(bill.invoiceNo || "Invoice")}</title>
+  <style>
+    body{font-family:Arial,sans-serif;margin:0;color:#172033;background:#eef2f6}
+    .invoice{max-width:900px;margin:24px auto;background:#fff;padding:42px;border:1px solid #d8e0eb}
+    header{display:flex;justify-content:space-between;gap:28px;border-bottom:3px solid #172033;padding-bottom:22px}
+    h1{margin:0;font-size:38px;letter-spacing:0}
+    h2{font-size:13px;text-transform:uppercase;letter-spacing:.12em;color:#5f6b7c;margin:0 0 8px}
+    p{margin:4px 0;line-height:1.45}
+    .brand strong{font-size:24px;color:#9b2aa2}
+    .meta{min-width:260px}
+    .meta div,.totals div{display:flex;justify-content:space-between;gap:16px;border-bottom:1px solid #e3e8ef;padding:7px 0}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin:26px 0}
+    .amount-due{background:#10233f;color:#fff;padding:18px 20px;margin:24px 0;display:flex;justify-content:space-between;align-items:center}
+    .amount-due strong{font-size:30px}
+    table{width:100%;border-collapse:collapse;margin-top:16px}
+    th{background:#edf2f8;text-align:left;padding:11px;border-bottom:1px solid #dbe3ee}
+    td{padding:14px 11px;border-bottom:1px solid #e3e8ef;vertical-align:top}
+    td:last-child,th:last-child{text-align:right;width:210px}
+    td span{display:block;color:#59667a;margin-top:5px}
+    .totals{margin-left:auto;width:330px;margin-top:16px}
+    .grand{font-size:20px;font-weight:700}
+    footer{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:28px;border-top:1px solid #dbe3ee;padding-top:22px}
+    @media print{body{background:#fff}.invoice{margin:0;max-width:none;border:0;box-shadow:none}}
+  </style>
+</head>
+<body>
+  <main class="invoice">
+    <header>
+      <div class="brand">
+        <h1>INVOICE</h1>
+        <strong>inspite</strong>
+        <p>Tax Invoice / Bill of Services</p>
+        <p>Software development, AI infrastructure & cloud engineering services.</p>
+      </div>
+      <div class="meta">
+        <div><span>Invoice No.</span><strong>${escapeHtml(bill.invoiceNo)}</strong></div>
+        <div><span>Invoice Date</span><strong>${escapeHtml(bill.invoiceDate)}</strong></div>
+        <div><span>Billing Period</span><strong>${escapeHtml(bill.billingPeriod)}</strong></div>
+        <div><span>Due Date</span><strong>${escapeHtml(bill.dueDate)}</strong></div>
+        <div><span>Exchange Rate</span><strong>1 USD = ${moneyInr(bill.exchangeRate)}</strong></div>
+      </div>
+    </header>
+    <section class="grid">
+      <div>
+        <h2>Inspite Technologies Private Limited</h2>
+        <p>Thapasya Building, Thapasya Rd, Infopark Campus, Infopark, Kochi, Kakkanad, Kerala 682042, India</p>
+      </div>
+      <div>
+        <h2>Bill To</h2>
+        <p><strong>${escapeHtml(bill.clientName)}</strong></p>
+        <p>${escapeHtml(bill.clientAddress).replace(/\n/g, "<br>")}</p>
+      </div>
+      <div>
+        <h2>Supply Type</h2>
+        <p>${escapeHtml(bill.supplyType)}</p>
+        <p>Place of supply: ${escapeHtml(bill.placeOfSupply)}</p>
+        <p>Currency: ${escapeHtml(bill.currency || "USD")}</p>
+      </div>
+      <div>
+        <h2>For services delivered in</h2>
+        <p>${escapeHtml(bill.serviceMonth || bill.billingPeriod)}</p>
+      </div>
+    </section>
+    <section class="amount-due">
+      <span>Amount Due</span>
+      <strong>${moneyUsd(totals.totalUsd)}</strong>
+      <span>${moneyInr(totals.totalInr)} INR</span>
+    </section>
+    <table>
+      <thead><tr><th>Description</th><th>Amount</th></tr></thead>
+      <tbody>${itemRows}</tbody>
+    </table>
+    <section class="totals">
+      <div><span>Subtotal</span><strong>${moneyUsd(totals.subtotalUsd)}</strong></div>
+      <div><span>IGST (export under LUT)</span><strong>${moneyUsd(totals.igstUsd)}</strong></div>
+      <div class="grand"><span>Total Due</span><strong>${moneyUsd(totals.totalUsd)}</strong></div>
+      <div><span>INR Equivalent</span><strong>${moneyInr(totals.totalInr)}</strong></div>
+    </section>
+    <footer>
+      <div><h2>Payment Terms</h2><p>${escapeHtml(bill.paymentTerms)}</p></div>
+      <div><h2>Notes</h2><p>${escapeHtml(bill.notes)}</p></div>
+    </footer>
+  </main>
+</body>
+</html>`;
+}
+
+function openBillForPrint(bill) {
+  const win = window.open("", "_blank", "noopener,noreferrer");
+  if (!win) {
+    toast("Allow popups to print this bill.", "error");
+    return;
+  }
+  win.document.write(invoiceHtml(bill));
+  win.document.close();
+  win.focus();
+  win.print();
+}
+
+function downloadBillHtml(bill) {
+  const blob = new Blob([invoiceHtml(bill)], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = billFilename(bill);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  toast("Bill downloaded.");
+}
+
+function BillingPage({ store, commit, createdBy }) {
+  const [bill, setBill] = useState(() => blankBill(store));
+  const [previewBill, setPreviewBill] = useState(null);
+  const bills = [...(store.bills || [])].sort((a, b) => String(b.invoiceDate || "").localeCompare(String(a.invoiceDate || "")));
+  const totals = calculateBillTotals(bill);
+
+  const updateBill = (field, value) => setBill((current) => ({ ...current, [field]: value }));
+  const updateItem = (id, field, value) => setBill((current) => ({
+    ...current,
+    items: current.items.map((item) => item.id === id ? { ...item, [field]: value } : item)
+  }));
+  const addItem = () => setBill((current) => ({
+    ...current,
+    items: [...current.items, { id: uid("ITEM"), description: "", details: "", amountUsd: "", amountInr: "" }]
+  }));
+  const removeItem = (id) => setBill((current) => ({
+    ...current,
+    items: current.items.length === 1 ? current.items : current.items.filter((item) => item.id !== id)
+  }));
+
+  const saveBill = (event) => {
+    event.preventDefault();
+    if (!String(bill.invoiceNo || "").trim() || !String(bill.clientName || "").trim() || !bill.items.some((item) => String(item.description || "").trim())) {
+      toast("Enter invoice number, client, and at least one bill item.", "error");
+      return;
+    }
+    const savedBill = normalizeBillForSave(bill, createdBy);
+    commit((current) => ({
+      ...current,
+      bills: [savedBill, ...(current.bills || []).filter((item) => item.id !== savedBill.id)]
+    }));
+    setPreviewBill(savedBill);
+    setBill(blankBill({ ...store, bills: [savedBill, ...(store.bills || [])] }));
+    toast("Bill saved.");
+  };
+
+  const editBill = (record) => {
+    setBill({ ...blankBill(store), ...record, items: record.items?.length ? record.items : defaultBillItems });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const deleteBill = (billId) => {
+    if (!window.confirm("Delete this bill from the billing records?")) return;
+    commit((current) => ({
+      ...current,
+      bills: (current.bills || []).filter((item) => item.id !== billId)
+    }));
+    toast("Bill deleted.");
+  };
+
+  return (
+    <DashboardGrid>
+      <Panel title="Generate Bill" className="full-row-panel">
+        <form className="form-grid billing-form" onSubmit={saveBill}>
+          <label>Invoice No.<input value={bill.invoiceNo} onChange={(event) => updateBill("invoiceNo", event.target.value)} /></label>
+          <label>Invoice Date<input type="date" value={dateInputValue(bill.invoiceDate)} onChange={(event) => updateBill("invoiceDate", event.target.value)} /></label>
+          <label>Billing Period<input placeholder="June 2026" value={bill.billingPeriod} onChange={(event) => updateBill("billingPeriod", event.target.value)} /></label>
+          <label>Due Date<input value={bill.dueDate} onChange={(event) => updateBill("dueDate", event.target.value)} /></label>
+          <label>Exchange Rate<input type="number" step="0.01" value={bill.exchangeRate} onChange={(event) => updateBill("exchangeRate", event.target.value)} /></label>
+          <label>Service Month<input placeholder="JUNE 2026" value={bill.serviceMonth} onChange={(event) => updateBill("serviceMonth", event.target.value)} /></label>
+          <label className="wide-input">Client Name<input value={bill.clientName} onChange={(event) => updateBill("clientName", event.target.value)} /></label>
+          <label className="wide-input">Client Address<textarea value={bill.clientAddress} onChange={(event) => updateBill("clientAddress", event.target.value)} /></label>
+          <label>Supply Type<input value={bill.supplyType} onChange={(event) => updateBill("supplyType", event.target.value)} /></label>
+          <label>Place of Supply<input value={bill.placeOfSupply} onChange={(event) => updateBill("placeOfSupply", event.target.value)} /></label>
+          <label>Currency<input value={bill.currency} onChange={(event) => updateBill("currency", event.target.value)} /></label>
+          <label>Status<select value={bill.status} onChange={(event) => updateBill("status", event.target.value)}><option>Draft</option><option>Sent</option><option>Paid</option></select></label>
+          <label className="wide-input">Payment Terms<textarea value={bill.paymentTerms} onChange={(event) => updateBill("paymentTerms", event.target.value)} /></label>
+          <label className="wide-input">Notes<textarea value={bill.notes} onChange={(event) => updateBill("notes", event.target.value)} /></label>
+          <div className="bill-items-editor">
+            <div className="bill-items-header">
+              <strong>Bill Items</strong>
+              <button type="button" className="secondary-button" onClick={addItem}>Add Item</button>
+            </div>
+            {bill.items.map((item) => (
+              <div className="bill-item-row" key={item.id}>
+                <input placeholder="Description" value={item.description} onChange={(event) => updateItem(item.id, "description", event.target.value)} />
+                <input placeholder="Details" value={item.details} onChange={(event) => updateItem(item.id, "details", event.target.value)} />
+                <input type="number" step="0.01" placeholder="USD" value={item.amountUsd} onChange={(event) => updateItem(item.id, "amountUsd", event.target.value)} />
+                <input type="number" step="0.01" placeholder="INR" value={item.amountInr} onChange={(event) => updateItem(item.id, "amountInr", event.target.value)} />
+                <button type="button" className="icon-action danger" title="Remove item" aria-label="Remove bill item" onClick={() => removeItem(item.id)}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /></svg>
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="billing-total-strip">
+            <Metric label="USD Total" value={moneyUsd(totals.totalUsd)} />
+            <Metric label="INR Total" value={moneyInr(totals.totalInr)} />
+            <Metric label="Items" value={bill.items.length} />
+          </div>
+          <button type="submit" className="primary-button">Save Bill</button>
+          <button type="button" className="secondary-button" onClick={() => setPreviewBill(normalizeBillForSave(bill, createdBy))}>Preview</button>
+        </form>
+      </Panel>
+      <Panel title="Saved Bills" className="full-row-panel">
+        <div className="data-table billing-records">
+          <div className="data-head"><span>Invoice</span><span>Client</span><span>Date</span><span>Total USD</span><span>Status</span><span>Action</span></div>
+          {bills.length ? bills.map((record) => {
+            const recordTotals = calculateBillTotals(record);
+            return (
+              <div className="data-row" key={record.id}>
+                <span>{record.invoiceNo}</span>
+                <span>{record.clientName}</span>
+                <span>{record.invoiceDate}</span>
+                <span>{moneyUsd(recordTotals.totalUsd)}</span>
+                <span>{record.status}</span>
+                <span className="employee-action-buttons">
+                  <button className="icon-action" type="button" title="Preview bill" aria-label={`Preview ${record.invoiceNo}`} onClick={() => setPreviewBill(record)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg></button>
+                  <button className="icon-action" type="button" title="Edit bill" aria-label={`Edit ${record.invoiceNo}`} onClick={() => editBill(record)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" /></svg></button>
+                  <button className="icon-action" type="button" title="Print bill" aria-label={`Print ${record.invoiceNo}`} onClick={() => openBillForPrint(record)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V2h12v7" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><path d="M6 14h12v8H6z" /></svg></button>
+                  <button className="icon-action danger" type="button" title="Delete bill" aria-label={`Delete ${record.invoiceNo}`} onClick={() => deleteBill(record.id)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /></svg></button>
+                </span>
+              </div>
+            );
+          }) : <p className="empty-note">No bills yet.</p>}
+        </div>
+      </Panel>
+      {previewBill ? <BillPreviewModal bill={previewBill} onClose={() => setPreviewBill(null)} /> : null}
+    </DashboardGrid>
+  );
+}
+
+function BillPreviewModal({ bill, onClose }) {
+  return (
+    <div className="receipt-modal-backdrop" role="presentation" onClick={onClose}>
+      <section className="receipt-modal bill-preview-modal" role="dialog" aria-modal="true" aria-label="Bill preview" onClick={(event) => event.stopPropagation()}>
+        <header>
+          <div>
+            <h2>{bill.invoiceNo}</h2>
+            <p>{bill.clientName}</p>
+          </div>
+          <button type="button" className="icon-action" aria-label="Close bill preview" title="Close" onClick={onClose}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12" /><path d="M18 6L6 18" /></svg>
+          </button>
+        </header>
+        <div className="bill-preview-frame" dangerouslySetInnerHTML={{ __html: invoiceHtml(bill).match(/<main class="invoice">([\s\S]*)<\/main>/)?.[1] || "" }} />
+        <div className="modal-form-actions">
+          <button type="button" className="secondary-button" onClick={() => downloadBillHtml(bill)}>Download HTML</button>
+          <button type="button" className="primary-button" onClick={() => openBillForPrint(bill)}>Print / Save PDF</button>
+        </div>
+      </section>
+    </div>
   );
 }
 
