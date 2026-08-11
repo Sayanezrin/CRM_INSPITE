@@ -796,11 +796,27 @@ button:disabled {
 }
 
 .bill-preview-frame header {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 28px;
   border-bottom: 3px solid #172033;
   padding-bottom: 18px;
+}
+
+.bill-preview-frame .brand {
+  display: grid;
+  gap: 8px;
+}
+
+.bill-preview-frame .brand-line {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.bill-preview-frame .brand img {
+  width: 104px;
+  height: auto;
 }
 
 .bill-preview-frame h1 {
@@ -821,24 +837,41 @@ button:disabled {
 }
 
 .bill-preview-frame .brand strong {
-  font-size: 22px;
-  color: #9b2aa2;
+  font-size: 18px;
+  color: #10233f;
 }
 
 .bill-preview-frame .meta div,
 .bill-preview-frame .totals div {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 16px;
   border-bottom: 1px solid #e3e8ef;
   padding: 7px 0;
 }
 
-.bill-preview-frame .grid {
+.bill-preview-frame .meta strong,
+.bill-preview-frame .totals strong {
+  text-align: right;
+}
+
+.bill-preview-frame .section-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 24px;
   margin: 24px 0;
+}
+
+.bill-preview-frame .box {
+  border: 1px solid #dce4ef;
+  padding: 14px;
+}
+
+.bill-preview-frame .supply-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-bottom: 20px;
 }
 
 .bill-preview-frame .amount-due {
@@ -846,9 +879,10 @@ button:disabled {
   color: #fff;
   padding: 16px 18px;
   margin: 20px 0;
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
   gap: 18px;
+  align-items: center;
 }
 
 .bill-preview-frame table {
@@ -859,20 +893,26 @@ button:disabled {
 .bill-preview-frame th,
 .bill-preview-frame td {
   padding: 12px 10px;
-  border-bottom: 1px solid #e3e8ef;
+  border: 1px solid #e3e8ef;
   vertical-align: top;
 }
 
-.bill-preview-frame th:last-child,
-.bill-preview-frame td:last-child {
+.bill-preview-frame .serial {
+  width: 52px;
+  text-align: center;
+}
+
+.bill-preview-frame .amount {
   text-align: right;
-  width: 190px;
+  white-space: nowrap;
+  width: 145px;
 }
 
 .bill-preview-frame .totals {
   margin-left: auto;
-  width: 320px;
+  width: 390px;
   margin-top: 14px;
+  border: 1px solid #dce4ef;
 }
 
 .bill-preview-frame footer {
@@ -882,6 +922,12 @@ button:disabled {
   margin-top: 24px;
   border-top: 1px solid #dbe3ee;
   padding-top: 20px;
+}
+
+.bill-preview-frame .signature {
+  margin-top: 24px;
+  text-align: right;
+  color: var(--muted);
 }
 
 .approval-list {
@@ -1197,7 +1243,9 @@ button:disabled {
 
   .bill-item-row,
   .billing-total-strip,
-  .bill-preview-frame .grid,
+  .bill-preview-frame .section-grid,
+  .bill-preview-frame .supply-row,
+  .bill-preview-frame .amount-due,
   .bill-preview-frame footer {
     grid-template-columns: 1fr;
   }
@@ -1210,9 +1258,8 @@ button:disabled {
     padding: 14px;
   }
 
-  .bill-preview-frame header,
-  .bill-preview-frame .amount-due {
-    flex-direction: column;
+  .bill-preview-frame header {
+    grid-template-columns: 1fr;
   }
 
   .bill-preview-frame .totals {

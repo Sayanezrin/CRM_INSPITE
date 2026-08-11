@@ -329,6 +329,13 @@ function moneyUsd(value) {
   return `$${Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function billDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+}
+
 function calculateBillTotals(bill) {
   const exchangeRate = Number(bill.exchangeRate || 0);
   const subtotalUsd = (bill.items || []).reduce((sum, item) => sum + Number(item.amountUsd || 0), 0);
@@ -1534,6 +1541,10 @@ function blankBill(store) {
     placeOfSupply: "Outside India",
     currency: "USD",
     serviceMonth: "",
+    companyName: "Inspite Technologies Private Limited",
+    companyAddress: "Thapasya Building, Thapasya Rd, Infopark Campus, Infopark, Kochi, Kakkanad, Kerala 682042, India",
+    companySummary: "Software development, AI infrastructure & cloud engineering services.",
+    bankDetails: "Bank transfer details can be shared with the client separately.",
     paymentTerms: "Payable on receipt via bank transfer. Please reference invoice no. with your remittance.",
     notes: "Supply meant for export under LUT without payment of IGST. INR equivalents are indicative at the stated exchange rate.",
     status: "Draft",
@@ -1550,6 +1561,12 @@ function normalizeBillForSave(bill, createdBy) {
     clientAddress: String(bill.clientAddress || "").trim(),
     billingPeriod: String(bill.billingPeriod || "").trim(),
     serviceMonth: String(bill.serviceMonth || "").trim(),
+    companyName: String(bill.companyName || "Inspite Technologies Private Limited").trim(),
+    companyAddress: String(bill.companyAddress || "").trim(),
+    companySummary: String(bill.companySummary || "").trim(),
+    bankDetails: String(bill.bankDetails || "").trim(),
+    paymentTerms: String(bill.paymentTerms || "").trim(),
+    notes: String(bill.notes || "").trim(),
     exchangeRate: Number(bill.exchangeRate || 0),
     items: (bill.items || []).map((item) => ({
       ...item,
@@ -1566,82 +1583,108 @@ function normalizeBillForSave(bill, createdBy) {
 
 function invoiceHtml(bill) {
   const totals = calculateBillTotals(bill);
-  const itemRows = (bill.items || []).map((item) => `
+  const exchangeRate = Number(bill.exchangeRate || 0);
+  const itemRows = (bill.items || []).map((item, index) => {
+    const usd = Number(item.amountUsd || 0);
+    const inr = Number(item.amountInr || 0) || usd * exchangeRate;
+    return `
     <tr>
+      <td class="serial">${index + 1}</td>
       <td>
         <strong>${escapeHtml(item.description)}</strong>
         <p>${escapeHtml(item.details)}</p>
       </td>
-      <td>
-        <strong>${moneyUsd(item.amountUsd)}</strong>
-        <span>${moneyInr(item.amountInr || Number(item.amountUsd || 0) * Number(bill.exchangeRate || 0))}</span>
-      </td>
+      <td class="amount">${moneyUsd(usd)}</td>
+      <td class="amount">${moneyInr(inr)}</td>
     </tr>
-  `).join("");
+  `;
+  }).join("");
   return `<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
   <title>${escapeHtml(bill.invoiceNo || "Invoice")}</title>
   <style>
-    body{font-family:Arial,sans-serif;margin:0;color:#172033;background:#eef2f6}
-    .invoice{max-width:900px;margin:24px auto;background:#fff;padding:42px;border:1px solid #d8e0eb}
-    header{display:flex;justify-content:space-between;gap:28px;border-bottom:3px solid #172033;padding-bottom:22px}
-    h1{margin:0;font-size:38px;letter-spacing:0}
-    h2{font-size:13px;text-transform:uppercase;letter-spacing:.12em;color:#5f6b7c;margin:0 0 8px}
+    @page{size:A4;margin:14mm}
+    body{font-family:Arial,sans-serif;margin:0;color:#162033;background:#eef2f6}
+    .invoice{max-width:900px;margin:24px auto;background:#fff;padding:38px;border:1px solid #d7e0eb}
+    header{display:grid;grid-template-columns:1fr auto;gap:30px;align-items:start;border-bottom:3px solid #10233f;padding-bottom:20px}
+    h1{margin:0;color:#10233f;font-size:40px;letter-spacing:0}
+    h2{font-size:12px;text-transform:uppercase;color:#59667a;margin:0 0 8px}
     p{margin:4px 0;line-height:1.45}
-    .brand strong{font-size:24px;color:#9b2aa2}
-    .meta{min-width:260px}
-    .meta div,.totals div{display:flex;justify-content:space-between;gap:16px;border-bottom:1px solid #e3e8ef;padding:7px 0}
-    .grid{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin:26px 0}
-    .amount-due{background:#10233f;color:#fff;padding:18px 20px;margin:24px 0;display:flex;justify-content:space-between;align-items:center}
-    .amount-due strong{font-size:30px}
-    table{width:100%;border-collapse:collapse;margin-top:16px}
-    th{background:#edf2f8;text-align:left;padding:11px;border-bottom:1px solid #dbe3ee}
-    td{padding:14px 11px;border-bottom:1px solid #e3e8ef;vertical-align:top}
-    td:last-child,th:last-child{text-align:right;width:210px}
-    td span{display:block;color:#59667a;margin-top:5px}
-    .totals{margin-left:auto;width:330px;margin-top:16px}
-    .grand{font-size:20px;font-weight:700}
-    footer{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:28px;border-top:1px solid #dbe3ee;padding-top:22px}
-    @media print{body{background:#fff}.invoice{margin:0;max-width:none;border:0;box-shadow:none}}
+    .brand{display:grid;gap:8px}
+    .brand-line{display:flex;align-items:center;gap:14px}
+    .brand img{width:112px;height:auto}
+    .brand strong{font-size:22px;color:#10233f}
+    .meta{min-width:286px;border:1px solid #dce4ef}
+    .meta div,.totals div{display:grid;grid-template-columns:1fr 1fr;gap:14px;border-bottom:1px solid #e3e9f1;padding:8px 10px}
+    .meta div:last-child,.totals div:last-child{border-bottom:0}
+    .meta span,.totals span{color:#59667a}
+    .meta strong,.totals strong{text-align:right}
+    .section-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin:24px 0}
+    .box{border:1px solid #dce4ef;padding:14px;min-height:112px}
+    .supply-row{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:22px}
+    .supply-row .box{min-height:auto}
+    .amount-due{background:#10233f;color:#fff;padding:16px 18px;margin:22px 0;display:grid;grid-template-columns:1fr auto auto;gap:18px;align-items:center}
+    .amount-due strong{font-size:28px}
+    table{width:100%;border-collapse:collapse;margin-top:14px}
+    th{background:#edf2f8;text-align:left;padding:11px;border:1px solid #dce4ef}
+    td{padding:13px 11px;border:1px solid #e3e9f1;vertical-align:top}
+    td p{color:#59667a}
+    .serial{width:52px;text-align:center}
+    .amount{text-align:right;white-space:nowrap;width:145px}
+    .totals{margin-left:auto;width:390px;margin-top:16px;border:1px solid #dce4ef}
+    .grand{font-size:18px;font-weight:700;background:#f6f9fd}
+    footer{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:26px;border-top:1px solid #dce4ef;padding-top:20px}
+    .signature{margin-top:28px;text-align:right;color:#59667a}
+    @media print{body{background:#fff}.invoice{margin:0;max-width:none;border:0;padding:0}.no-print{display:none}}
   </style>
 </head>
 <body>
   <main class="invoice">
     <header>
       <div class="brand">
-        <h1>INVOICE</h1>
-        <strong>inspite</strong>
-        <p>Tax Invoice / Bill of Services</p>
-        <p>Software development, AI infrastructure & cloud engineering services.</p>
+        <div class="brand-line">
+          <img src="${inspiteLogoImage}" alt="Inspite">
+          <div>
+            <h1>INVOICE</h1>
+            <strong>Tax Invoice / Bill of Services</strong>
+          </div>
+        </div>
+        <p>${escapeHtml(bill.companySummary || "Software development, AI infrastructure & cloud engineering services.")}</p>
       </div>
       <div class="meta">
         <div><span>Invoice No.</span><strong>${escapeHtml(bill.invoiceNo)}</strong></div>
-        <div><span>Invoice Date</span><strong>${escapeHtml(bill.invoiceDate)}</strong></div>
+        <div><span>Invoice Date</span><strong>${escapeHtml(billDate(bill.invoiceDate))}</strong></div>
         <div><span>Billing Period</span><strong>${escapeHtml(bill.billingPeriod)}</strong></div>
         <div><span>Due Date</span><strong>${escapeHtml(bill.dueDate)}</strong></div>
         <div><span>Exchange Rate</span><strong>1 USD = ${moneyInr(bill.exchangeRate)}</strong></div>
       </div>
     </header>
-    <section class="grid">
-      <div>
-        <h2>Inspite Technologies Private Limited</h2>
-        <p>Thapasya Building, Thapasya Rd, Infopark Campus, Infopark, Kochi, Kakkanad, Kerala 682042, India</p>
+    <section class="section-grid">
+      <div class="box">
+        <h2>From</h2>
+        <p><strong>${escapeHtml(bill.companyName || "Inspite Technologies Private Limited")}</strong></p>
+        <p>${escapeHtml(bill.companyAddress || "").replace(/\n/g, "<br>")}</p>
       </div>
-      <div>
+      <div class="box">
         <h2>Bill To</h2>
         <p><strong>${escapeHtml(bill.clientName)}</strong></p>
         <p>${escapeHtml(bill.clientAddress).replace(/\n/g, "<br>")}</p>
       </div>
-      <div>
+    </section>
+    <section class="supply-row">
+      <div class="box">
         <h2>Supply Type</h2>
         <p>${escapeHtml(bill.supplyType)}</p>
-        <p>Place of supply: ${escapeHtml(bill.placeOfSupply)}</p>
-        <p>Currency: ${escapeHtml(bill.currency || "USD")}</p>
       </div>
-      <div>
-        <h2>For services delivered in</h2>
+      <div class="box">
+        <h2>Place of Supply</h2>
+        <p>${escapeHtml(bill.placeOfSupply)}</p>
+      </div>
+      <div class="box">
+        <h2>Currency / Service Month</h2>
+        <p>${escapeHtml(bill.currency || "USD")}</p>
         <p>${escapeHtml(bill.serviceMonth || bill.billingPeriod)}</p>
       </div>
     </section>
@@ -1651,7 +1694,7 @@ function invoiceHtml(bill) {
       <span>${moneyInr(totals.totalInr)} INR</span>
     </section>
     <table>
-      <thead><tr><th>Description</th><th>Amount</th></tr></thead>
+      <thead><tr><th class="serial">No.</th><th>Particulars</th><th class="amount">Amount USD</th><th class="amount">INR Equivalent</th></tr></thead>
       <tbody>${itemRows}</tbody>
     </table>
     <section class="totals">
@@ -1662,8 +1705,9 @@ function invoiceHtml(bill) {
     </section>
     <footer>
       <div><h2>Payment Terms</h2><p>${escapeHtml(bill.paymentTerms)}</p></div>
-      <div><h2>Notes</h2><p>${escapeHtml(bill.notes)}</p></div>
+      <div><h2>Bank / Notes</h2><p>${escapeHtml(bill.bankDetails)}</p><p>${escapeHtml(bill.notes)}</p></div>
     </footer>
+    <div class="signature">For Inspite Technologies Private Limited</div>
   </main>
 </body>
 </html>`;
@@ -1759,6 +1803,10 @@ function BillingPage({ store, commit, createdBy }) {
           <label>Place of Supply<input value={bill.placeOfSupply} onChange={(event) => updateBill("placeOfSupply", event.target.value)} /></label>
           <label>Currency<input value={bill.currency} onChange={(event) => updateBill("currency", event.target.value)} /></label>
           <label>Status<select value={bill.status} onChange={(event) => updateBill("status", event.target.value)}><option>Draft</option><option>Sent</option><option>Paid</option></select></label>
+          <label className="wide-input">Company Name<input value={bill.companyName} onChange={(event) => updateBill("companyName", event.target.value)} /></label>
+          <label className="wide-input">Company Address<textarea value={bill.companyAddress} onChange={(event) => updateBill("companyAddress", event.target.value)} /></label>
+          <label className="wide-input">Company Summary<textarea value={bill.companySummary} onChange={(event) => updateBill("companySummary", event.target.value)} /></label>
+          <label className="wide-input">Bank Details<textarea value={bill.bankDetails} onChange={(event) => updateBill("bankDetails", event.target.value)} /></label>
           <label className="wide-input">Payment Terms<textarea value={bill.paymentTerms} onChange={(event) => updateBill("paymentTerms", event.target.value)} /></label>
           <label className="wide-input">Notes<textarea value={bill.notes} onChange={(event) => updateBill("notes", event.target.value)} /></label>
           <div className="bill-items-editor">
