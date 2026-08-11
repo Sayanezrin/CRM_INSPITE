@@ -1609,7 +1609,7 @@ function invoiceHtml(bill) {
   <style>
     @page{size:A4;margin:0}
     body{font-family:Arial,sans-serif;margin:0;color:#202431;background:#eef2f6}
-    .invoice{width:210mm;min-height:297mm;margin:24px auto;background:#fff;padding:13mm 12mm 7mm;box-sizing:border-box;border:1px solid #d7e0eb}
+    .invoice{width:210mm;min-height:297mm;margin:24px auto;background:#fff;padding:13mm 12mm 7mm;box-sizing:border-box;border:1px solid #d7e0eb;font-size:101.5%}
     header{display:grid;grid-template-columns:minmax(0,1fr) 42mm;gap:22mm;align-items:start}
     h1{margin:0;color:#202431;font-size:30px;line-height:1;font-weight:800;letter-spacing:0;text-align:right}
     h2{font-size:8px;text-transform:uppercase;letter-spacing:.32em;color:#bd2398;margin:0 0 4px}
@@ -1723,12 +1723,12 @@ function openBillForPrint(bill) {
   frame.id = "bill-print-frame";
   frame.title = "Bill print frame";
   frame.style.position = "fixed";
-  frame.style.right = "0";
-  frame.style.bottom = "0";
-  frame.style.width = "0";
-  frame.style.height = "0";
+  frame.style.left = "-10000px";
+  frame.style.top = "0";
+  frame.style.width = "794px";
+  frame.style.height = "1123px";
   frame.style.border = "0";
-  frame.style.opacity = "0";
+  frame.style.visibility = "hidden";
   document.body.appendChild(frame);
 
   const printFrame = () => {
