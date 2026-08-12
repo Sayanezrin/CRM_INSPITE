@@ -857,6 +857,11 @@ button:disabled {
   font-size: 9px;
 }
 
+.bill-preview-frame .invoice-title .gstin {
+  color: #202431;
+  font-weight: 700;
+}
+
 .bill-preview-frame .meta div,
 .bill-preview-frame .totals div {
   display: grid;

@@ -1619,6 +1619,7 @@ function invoiceHtml(bill) {
     .company strong{display:block;color:#202431;font-size:9px;margin-bottom:3px}
     .invoice-title{display:grid;gap:4px;justify-items:start}
     .invoice-title p{color:#687184;font-size:9px}
+    .invoice-title .gstin{color:#202431;font-weight:700}
     .meta{width:100%;margin-top:5px;font-size:7px}
     .meta div,.totals div{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:2px 0}
     .meta span{color:#687184;text-align:left}
@@ -1665,6 +1666,7 @@ function invoiceHtml(bill) {
       <div class="invoice-title">
         <h1>INVOICE</h1>
         <p>Tax Invoice / Bill of Services</p>
+        <p class="gstin">GSTIN- 32AAGCI0782C1Z0</p>
         <div class="meta">
           <div><span>Invoice No.</span><strong>${escapeHtml(bill.invoiceNo)}</strong></div>
           <div><span>Invoice Date</span><strong>${escapeHtml(billDate(bill.invoiceDate))}</strong></div>
