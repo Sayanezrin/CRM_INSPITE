@@ -823,7 +823,7 @@ button:disabled {
   color: #202431;
   font-size: 30px;
   line-height: 1;
-  text-align: right;
+  text-align: left;
 }
 
 .bill-preview-frame h2 {
@@ -849,7 +849,7 @@ button:disabled {
 .bill-preview-frame .invoice-title {
   display: grid;
   gap: 10px;
-  justify-items: end;
+  justify-items: start;
 }
 
 .bill-preview-frame .invoice-title p {
@@ -870,13 +870,20 @@ button:disabled {
   font-size: 7px;
 }
 
-.bill-preview-frame .meta span,
+.bill-preview-frame .meta span {
+  color: #687184;
+  text-align: left;
+}
+
+.bill-preview-frame .meta strong {
+  text-align: left;
+}
+
 .bill-preview-frame .totals span {
   color: #687184;
   text-align: right;
 }
 
-.bill-preview-frame .meta strong,
 .bill-preview-frame .totals strong {
   text-align: right;
 }

@@ -1611,18 +1611,20 @@ function invoiceHtml(bill) {
     body{font-family:Arial,sans-serif;margin:0;color:#202431;background:#eef2f6}
     .invoice{width:210mm;min-height:297mm;margin:24px auto;background:#fff;padding:13mm 12mm 7mm;box-sizing:border-box;border:1px solid #d7e0eb;font-size:101.5%}
     header{display:grid;grid-template-columns:minmax(0,1fr) 42mm;gap:22mm;align-items:start}
-    h1{margin:0;color:#202431;font-size:30px;line-height:1;font-weight:800;letter-spacing:0;text-align:right}
+    h1{margin:0;color:#202431;font-size:30px;line-height:1;font-weight:800;letter-spacing:0;text-align:left}
     h2{font-size:8px;text-transform:uppercase;letter-spacing:.32em;color:#bd2398;margin:0 0 4px}
     p{margin:2px 0;line-height:1.45}
     .brand{display:grid;gap:9mm;color:#687184;font-size:9px}
     .brand img{width:50mm;height:auto}
     .company strong{display:block;color:#202431;font-size:9px;margin-bottom:3px}
-    .invoice-title{display:grid;gap:4px;justify-items:end}
+    .invoice-title{display:grid;gap:4px;justify-items:start}
     .invoice-title p{color:#687184;font-size:9px}
     .meta{width:100%;margin-top:5px;font-size:7px}
     .meta div,.totals div{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:2px 0}
-    .meta span,.totals span{color:#687184;text-align:right}
-    .meta strong,.totals strong{text-align:right}
+    .meta span{color:#687184;text-align:left}
+    .meta strong{text-align:left}
+    .totals span{color:#687184;text-align:right}
+    .totals strong{text-align:right}
     .divider{height:2px;margin:9mm 0 5mm;border-radius:999px;background:linear-gradient(90deg,#bd2398,#3b78bf)}
     .section-grid{display:grid;grid-template-columns:1fr 1fr;gap:5mm;margin:0 0 5mm}
     .box{border:1px solid #e5dceb;border-radius:8px;padding:5mm;min-height:24mm}
