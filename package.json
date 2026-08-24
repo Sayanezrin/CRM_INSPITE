@@ -7,7 +7,7 @@
     "client": "cd client && npm run dev",
     "server": "cd server && npm run dev",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
-    "build": "cd client && npm install && npm run build && cd .. && node scripts/copy-client-dist.mjs",
+    "build": "pnpm --dir client run build && node scripts/copy-client-dist.mjs",
     "server:check": "cd server && npm run check"
   },
   "dependencies": {
