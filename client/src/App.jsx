@@ -1966,7 +1966,7 @@ function CashbookReportPage({ entries, onBack }) {
       table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:12px;border-bottom:1px solid #e3e8ef;text-align:left;vertical-align:top}th{background:#f6f7f9;text-transform:uppercase;color:#3f4a5f;font-size:12px}
       tfoot td{font-weight:800}.footer{margin-top:28px;color:#667387;font-size:12px;text-align:right}@media print{body{padding:20px}.no-print{display:none}}
     </style></head><body>
-      <section class="brand"><img src="${inspiteLogoImage}" alt="Inspite"><div><h1>Cashbook Report</h1><p>My Business</p><p>Phone Number : 8848242785</p></div></section>
+      <section class="brand"><img src="${inspiteLogoImage}" alt="Inspite"><div><h1>Cashbook Report</h1><p>My Business</p></div></section>
       <p class="range">${escapeHtml(billDate(fromDate))} to ${escapeHtml(billDate(toDate))}</p>
       <section class="totals"><div class="metric"><strong class="in">${moneyInr(totals.in)}</strong>Total IN (+)</div><div class="metric"><strong class="out">${moneyInr(totals.out)}</strong>Total OUT (-)</div><div class="metric"><strong>${moneyInr(totals.in - totals.out)}</strong>Net Balance</div></section>
       <section class="split"><div>Cash : ${moneyInr(cashIn)}<br>Online : ${moneyInr(onlineIn)}<br>No. of entries : ${reportEntries.length}</div><div>Cash : ${moneyInr(cashOut)}<br>Online : ${moneyInr(onlineOut)}</div></section>
