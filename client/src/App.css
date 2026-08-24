@@ -408,67 +408,23 @@ button:disabled {
   align-items: end;
 }
 
-.cashbook-summary .metric {
-  min-width: 180px;
-  flex: 1 1 180px;
-}
-
+.cashbook-summary .metric { min-width: 180px; flex: 1 1 180px; }
 .cashbook-summary > button { align-self: stretch; }
-
 .cashbook-filters label { min-width: 190px; flex: 1 1 190px; }
 .cashbook-filters button { margin-bottom: 0; }
-
-.cashbook-totals {
-  justify-content: flex-end;
-  padding: 10px 12px;
-  border: 1px solid #e0e8f2;
-  border-radius: 7px;
-  background: #f9fbfe;
-  color: var(--muted);
-}
-
+.cashbook-totals { justify-content: flex-end; padding: 10px 12px; border: 1px solid #e0e8f2; border-radius: 7px; background: #f9fbfe; color: var(--muted); }
 .cash-in { color: var(--green); }
 .cash-out { color: var(--red); }
-
-.cashbook-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(300px, .8fr);
-  gap: 18px;
-}
-
-.cashbook-list {
-  min-height: 320px;
-  border: 1px solid #e0e8f2;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.cashbook-entry {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 14px;
-  align-items: center;
-  padding: 14px;
-  border-bottom: 1px solid #e6edf5;
-}
-
+.cashbook-layout { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(300px, .8fr); gap: 18px; }
+.cashbook-list { min-height: 320px; border: 1px solid #e0e8f2; border-radius: 8px; overflow: hidden; }
+.cashbook-entry { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 14px; align-items: center; padding: 14px; border-bottom: 1px solid #e6edf5; }
 .cashbook-entry:last-child { border-bottom: 0; }
 .cashbook-entry > div:first-child { display: grid; gap: 4px; }
 .cashbook-entry span { color: var(--muted); font-size: 13px; }
 .cashbook-entry-actions { display: flex; gap: 8px; align-items: center; }
 .cashbook-entry-actions .table-action { min-height: 32px; padding: 6px 10px; border-radius: 6px; text-decoration: none; font-weight: 700; }
 .cashbook-entry-actions .icon-action { font-size: 22px; line-height: 1; }
-
-.cashbook-entry-form {
-  display: grid;
-  gap: 12px;
-  align-content: start;
-  border: 1px solid #d7e0eb;
-  border-radius: 8px;
-  padding: 16px;
-  background: #fbfcfe;
-}
-
+.cashbook-entry-form { display: grid; gap: 12px; align-content: start; border: 1px solid #d7e0eb; border-radius: 8px; padding: 16px; background: #fbfcfe; }
 .cashbook-entry-form h3 { margin: 0; }
 .cashbook-entry-form fieldset { margin: 0; padding: 0; border: 0; display: flex; flex-wrap: wrap; gap: 12px; }
 .cashbook-entry-form legend { margin-bottom: 8px; color: #344154; font-weight: 600; }
@@ -476,14 +432,12 @@ button:disabled {
 .cashbook-entry-form fieldset input { width: auto; min-height: 0; }
 .cashbook-entry-form input[type="file"] { padding: 8px; }
 .attachment-note { margin: -4px 0 0; color: var(--green); font-size: 13px; }
-
 .transaction-type-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .transaction-type-picker button { min-height: 40px; border: 1px solid #cbd6e3; border-radius: 6px; background: #fff; font-weight: 800; }
 .transaction-type-picker .out { color: var(--red); }
 .transaction-type-picker .in { color: var(--green); }
 .transaction-type-picker .out.selected { border-color: #e8aab1; background: #fff1f2; }
 .transaction-type-picker .in.selected { border-color: #9bd5b4; background: #edf9f1; }
-
 .cashbook-report-modal { width: min(760px, calc(100vw - 32px)); }
 
 .overview-grid {
