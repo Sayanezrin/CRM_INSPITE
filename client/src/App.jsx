@@ -1831,7 +1831,8 @@ function CashbookPage({ store, commit, createdBy }) {
       event.target.value = "";
       return;
     }
-    setEntry((current) => ({ ...current, attachment: { name: file.name, type: file.type, dataUrl: await fileToDataUrl(file) } }));
+    const dataUrl = await fileToDataUrl(file);
+    setEntry((current) => ({ ...current, attachment: { name: file.name, type: file.type, dataUrl } }));
   };
 
   const deleteEntry = (id) => {
