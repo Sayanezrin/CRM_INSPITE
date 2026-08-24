@@ -1236,7 +1236,6 @@ const navItems = [
   { id: "cashbook", label: "Cashbook", roles: ["admin", "hr"] },
   { id: "finance", label: "Finance", roles: ["admin", "hr"] },
   { id: "billing", label: "Billing", roles: ["admin", "hr"] },
-  { id: "cashbook", label: "Cashbook", roles: ["admin", "hr"] },
   { id: "leave", label: "Leave" },
   { id: "expenses", label: "Expenses" },
   { id: "attendance", label: "Attendance" }
@@ -1305,7 +1304,6 @@ function RolePage({ session, activePage, store, commit, commitAttendance, delete
 function AdminPage({ activePage, store, commit, commitAttendance, deleteAttendance, session }) {
   if (activePage === "logins") return <DashboardGrid><AddLoginPanel commit={commit} /><LoginAccessTable logins={store.logins || []} commit={commit} className="full-row-panel" /></DashboardGrid>;
   if (activePage === "employees") return <DashboardGrid><AddEmployeePanel commit={commit} /><EmployeeTable employees={store.employees} commit={commit} canDelete className="full-row-panel" /></DashboardGrid>;
-  if (activePage === "cashbook") return <CashbookPanel store={store} commit={commit} createdBy="Admin" />;
   if (activePage === "finance") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} createdBy="Admin" title="Add Debit Expense" /><FinancePanel store={store} commit={commit} canManage canExport className="full-row-panel" /></DashboardGrid>;
   if (activePage === "billing") return <BillingPage store={store} commit={commit} createdBy="Admin" />;
   if (activePage === "cashbook") return <CashbookPage store={store} commit={commit} createdBy="Admin" />;
@@ -1317,7 +1315,6 @@ function AdminPage({ activePage, store, commit, commitAttendance, deleteAttendan
 
 function HrPage({ activePage, store, commit, commitAttendance, deleteAttendance, session }) {
   if (activePage === "employees") return <DashboardGrid><EmployeeTable employees={store.employees} /></DashboardGrid>;
-  if (activePage === "cashbook") return <CashbookPanel store={store} commit={commit} createdBy="Accountant" />;
   if (activePage === "leave") return <DashboardGrid><LeaveTable leaves={store.leaves} /></DashboardGrid>;
   if (activePage === "expenses") return <DashboardGrid><ApprovalPanel title="Expense Approval Queue" items={store.expenses} kind="expenses" commit={commit} /><ExpenseTable expenses={store.expenses} /></DashboardGrid>;
   if (activePage === "attendance") return <AttendancePage store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} session={session} />;
@@ -1807,19 +1804,41 @@ function cashbookReportHtml(entries, fromDate, toDate) {
   return `<!doctype html><html><head><meta charset="utf-8"><title>Cashbook Report</title><style>body{font-family:Arial,sans-serif;color:#18212f;padding:32px}h1{margin:0 0 6px}p{color:#667387}table{width:100%;border-collapse:collapse;margin-top:24px}th,td{padding:10px;border-bottom:1px solid #d7e0eb;text-align:left}th{background:#eef4ff}.in{color:#138a53}.out{color:#c83d49}@media print{body{padding:0}}</style></head><body><h1>Cashbook Report</h1><p>${escapeHtml(fromDate || "All dates")} — ${escapeHtml(toDate || "Today")}</p><p><strong class="in">Total In: ${moneyInr(totals.in)}</strong> &nbsp;&nbsp; <strong class="out">Total Out: ${moneyInr(totals.out)}</strong> &nbsp;&nbsp; <strong>Net Balance: ${moneyInr(totals.in - totals.out)}</strong></p><table><thead><tr><th>Date</th><th>Description</th><th>Payment mode</th><th>In</th><th>Out</th></tr></thead><tbody>${rows || '<tr><td colspan="5">No transactions in this period.</td></tr>'}</tbody></table></body></html>`;
 }
 
+function currentMonthRange() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return { start: dateInputValue(start), end: dateInputValue(end) };
+}
+
+function cashbookSummaryRows(entries, sortMode = "recent") {
+  const byDate = new Map();
+  for (const entry of entries) {
+    const key = dateInputValue(entry.date);
+    if (!key) continue;
+    const current = byDate.get(key) || { id: key, date: key, totalIn: 0, totalOut: 0, balance: 0, entries: 0 };
+    const amount = Number(entry.amount || 0);
+    if (entry.type === "In") current.totalIn += amount;
+    else current.totalOut += amount;
+    current.balance = current.totalIn - current.totalOut;
+    current.entries += 1;
+    byDate.set(key, current);
+  }
+  return [...byDate.values()].sort((first, second) => (
+    sortMode === "oldest" ? first.date.localeCompare(second.date) : second.date.localeCompare(first.date)
+  ));
+}
+
 function CashbookPage({ store, commit, createdBy }) {
   const [entry, setEntry] = useState(blankCashbookEntry);
   const [filterDate, setFilterDate] = useState("");
   const [paymentMode, setPaymentMode] = useState("All");
   const [reportOpen, setReportOpen] = useState(false);
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
   const entries = [...(store.cashbook || [])].sort((first, second) => String(second.date || "").localeCompare(String(first.date || "")) || String(second.createdAt || "").localeCompare(String(first.createdAt || "")));
   const filteredEntries = entries.filter((item) => (!filterDate || item.date === filterDate) && (paymentMode === "All" || item.paymentMode === paymentMode));
   const visibleTotals = cashbookTotals(filteredEntries);
   const allTotals = cashbookTotals(entries);
   const todayTotals = cashbookTotals(entries.filter((item) => item.date === today()));
-  const reportEntries = entries.filter((item) => isWithinDateRange(item.date, fromDate, toDate));
 
   const addEntry = (event) => {
     event.preventDefault();
@@ -1853,18 +1872,7 @@ function CashbookPage({ store, commit, createdBy }) {
     toast("Cashbook transaction deleted.");
   };
 
-  const printReport = () => {
-    const reportWindow = window.open("", "_blank");
-    if (!reportWindow) { toast("Allow pop-ups to print the cashbook report.", "error"); return; }
-    reportWindow.document.write(cashbookReportHtml(reportEntries, fromDate, toDate));
-    reportWindow.document.close();
-    reportWindow.focus();
-    reportWindow.print();
-  };
-
-  const downloadReport = () => downloadExcelReport("cashbook-report.xls", "Cashbook Report", [{ title: "Transactions", rows: reportEntries, columns: [
-    { key: "date", label: "Date" }, { key: "description", label: "Description" }, { key: "paymentMode", label: "Payment Mode" }, { key: "type", label: "Type" }, { key: "amount", label: "Amount", currency: true }
-  ] }]);
+  if (reportOpen) return <CashbookReportPage entries={entries} onBack={() => setReportOpen(false)} />;
 
   return (
     <DashboardGrid>
@@ -1903,6 +1911,110 @@ function CashbookPage({ store, commit, createdBy }) {
       </Panel>
       {reportOpen ? <div className="receipt-modal-backdrop" role="presentation" onClick={() => setReportOpen(false)}><section className="receipt-modal cashbook-report-modal" role="dialog" aria-modal="true" aria-label="Cashbook report" onClick={(event) => event.stopPropagation()}><header><div><h2>Cashbook Report</h2><p>Review transactions and download the selected period.</p></div><button className="icon-action" type="button" onClick={() => setReportOpen(false)}>×</button></header><div className="cashbook-filters"><label>From<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label><label>To<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label></div><div className="cashbook-summary"><Metric label="Total In" value={moneyInr(cashbookTotals(reportEntries).in)} /><Metric label="Total Out" value={moneyInr(cashbookTotals(reportEntries).out)} /><Metric label="Net Balance" value={moneyInr(cashbookTotals(reportEntries).in - cashbookTotals(reportEntries).out)} /></div><div className="modal-form-actions"><button className="secondary-button" type="button" onClick={downloadReport}>Download Excel</button><button className="primary-button" type="button" onClick={printReport}>Print / Save PDF</button></div></section></div> : null}
     </DashboardGrid>
+  );
+}
+
+function CashbookReportPage({ entries, onBack }) {
+  const monthRange = currentMonthRange();
+  const [period, setPeriod] = useState("month");
+  const [fromDate, setFromDate] = useState(monthRange.start);
+  const [toDate, setToDate] = useState(monthRange.end);
+  const [sortMode, setSortMode] = useState("recent");
+  const [downloadDialogOpen, setDownloadDialogOpen] = useState(false);
+  const [downloadType, setDownloadType] = useState("detailed");
+  const reportEntries = entries.filter((item) => isWithinDateRange(item.date, fromDate, toDate));
+  const totals = cashbookTotals(reportEntries);
+  const cashIn = reportEntries.filter((item) => item.type === "In" && item.paymentMode === "Cash").reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const onlineIn = reportEntries.filter((item) => item.type === "In" && item.paymentMode === "Online").reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const cashOut = reportEntries.filter((item) => item.type === "Out" && item.paymentMode === "Cash").reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const onlineOut = reportEntries.filter((item) => item.type === "Out" && item.paymentMode === "Online").reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const reportRows = cashbookSummaryRows(reportEntries, sortMode);
+
+  const changePeriod = (value) => {
+    setPeriod(value);
+    const now = new Date();
+    if (value === "month") {
+      const range = currentMonthRange();
+      setFromDate(range.start);
+      setToDate(range.end);
+    } else if (value === "today") {
+      setFromDate(today());
+      setToDate(today());
+    } else if (value === "year") {
+      setFromDate(`${now.getFullYear()}-01-01`);
+      setToDate(`${now.getFullYear()}-12-31`);
+    }
+  };
+
+  const openPrintableReport = () => {
+    const reportWindow = window.open("", "_blank");
+    if (!reportWindow) {
+      toast("Allow pop-ups to download the cashbook PDF.", "error");
+      return;
+    }
+    const generatedAt = new Date().toLocaleString("en-IN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short", year: "2-digit" });
+    const rows = downloadType === "detailed"
+      ? reportEntries.map((entry) => `<tr><td>${escapeHtml(billDate(entry.date))}<br><small>${escapeHtml(entry.description)}</small></td><td>${entry.type === "In" ? moneyInr(entry.amount) : ""}</td><td>${entry.type === "Out" ? moneyInr(entry.amount) : ""}</td><td>${moneyInr(entry.type === "In" ? entry.amount : -Number(entry.amount || 0))}</td></tr>`).join("")
+      : reportRows.map((row) => `<tr><td>${escapeHtml(billDate(row.date))}<br><small>${row.entries} Entries</small></td><td>${moneyInr(row.totalIn)}</td><td>${moneyInr(row.totalOut)}</td><td>${moneyInr(row.balance)}</td></tr>`).join("");
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Cashbook Report</title><style>
+      body{font-family:Arial,sans-serif;color:#202431;margin:0;padding:34px;background:#fff}
+      .brand{display:flex;align-items:center;justify-content:space-between;gap:24px;border-bottom:1px solid #dfe5ee;padding-bottom:18px;margin-bottom:22px}
+      .brand img{width:150px;height:auto}.brand h1{margin:0;font-size:26px}.brand p{margin:5px 0;color:#667387}
+      .range{text-align:center;font-weight:700;margin:8px 0 22px}.totals{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px}
+      .metric{border:1px solid #e2e8f0;border-radius:8px;padding:14px}.metric strong{display:block;font-size:22px;margin-bottom:6px}.in{color:#00a45f}.out{color:#d92323}
+      .split{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;color:#526178}.split div{border:1px solid #edf0f5;border-radius:8px;padding:12px}
+      table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:12px;border-bottom:1px solid #e3e8ef;text-align:left;vertical-align:top}th{background:#f6f7f9;text-transform:uppercase;color:#3f4a5f;font-size:12px}
+      tfoot td{font-weight:800}.footer{margin-top:28px;color:#667387;font-size:12px;text-align:right}@media print{body{padding:20px}.no-print{display:none}}
+    </style></head><body>
+      <section class="brand"><img src="${inspiteLogoImage}" alt="Inspite"><div><h1>Cashbook Report</h1><p>My Business</p><p>Phone Number : 8848242785</p></div></section>
+      <p class="range">${escapeHtml(billDate(fromDate))} to ${escapeHtml(billDate(toDate))}</p>
+      <section class="totals"><div class="metric"><strong class="in">${moneyInr(totals.in)}</strong>Total IN (+)</div><div class="metric"><strong class="out">${moneyInr(totals.out)}</strong>Total OUT (-)</div><div class="metric"><strong>${moneyInr(totals.in - totals.out)}</strong>Net Balance</div></section>
+      <section class="split"><div>Cash : ${moneyInr(cashIn)}<br>Online : ${moneyInr(onlineIn)}<br>No. of entries : ${reportEntries.length}</div><div>Cash : ${moneyInr(cashOut)}<br>Online : ${moneyInr(onlineOut)}</div></section>
+      <table><thead><tr><th>Date</th><th>Total In</th><th>Total Out</th><th>Balance</th></tr></thead><tbody>${rows || '<tr><td colspan="4">No transactions in this period.</td></tr>'}</tbody><tfoot><tr><td>Grand Total</td><td>${moneyInr(totals.in)}</td><td>${moneyInr(totals.out)}</td><td>${moneyInr(totals.in - totals.out)}</td></tr></tfoot></table>
+      <p class="footer">Report generated : ${escapeHtml(generatedAt)}</p>
+      <script>window.addEventListener("load",()=>window.print());</script>
+    </body></html>`;
+    reportWindow.document.write(html);
+    reportWindow.document.close();
+    setDownloadDialogOpen(false);
+  };
+
+  const downloadReport = () => downloadExcelReport("cashbook-report.xls", "Cashbook Report", [{
+    title: "Daily Summary",
+    rows: reportRows,
+    columns: [
+      { key: "date", label: "Date" },
+      { key: "totalIn", label: "Total In", currency: true },
+      { key: "totalOut", label: "Total Out", currency: true },
+      { key: "balance", label: "Balance", currency: true }
+    ]
+  }]);
+
+  return (
+    <section className="cashbook-report-page">
+      <aside className="cashbook-report-sidebar">
+        <h2>Reports</h2>
+        <span>PARTIES REPORTS</span>
+        <button type="button" className="report-menu-item" disabled><span className="report-icon muted">TR</span><strong>Transaction Report</strong><small>All customers, All Transactions</small></button>
+        <button type="button" className="report-menu-item active"><span className="report-icon">CB</span><strong>Cashbook Report</strong></button>
+      </aside>
+      <div className="cashbook-report-content">
+        <div className="cashbook-report-header">
+          <button type="button" className="icon-action" aria-label="Back to cashbook" title="Back to cashbook" onClick={onBack}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5" /><path d="M12 19l-7-7 7-7" /></svg></button>
+          <h2>Cashbook Report</h2>
+          <div className="cashbook-report-actions"><button type="button" className="secondary-button" onClick={() => setDownloadDialogOpen(true)}>Download PDF</button><button type="button" className="secondary-button" onClick={downloadReport}>Download Excel</button></div>
+        </div>
+        <div className="cashbook-report-filters">
+          <label>Period<select value={period} onChange={(event) => changePeriod(event.target.value)}><option value="month">This Month</option><option value="today">Today</option><option value="year">This Year</option><option value="custom">Custom</option></select></label>
+          <label>Start<input type="date" value={fromDate} onChange={(event) => { setPeriod("custom"); setFromDate(event.target.value); }} /></label>
+          <label>End<input type="date" value={toDate} onChange={(event) => { setPeriod("custom"); setToDate(event.target.value); }} /></label>
+          <label>Sort<select value={sortMode} onChange={(event) => setSortMode(event.target.value)}><option value="recent">Most Recent</option><option value="oldest">Oldest First</option></select></label>
+        </div>
+        <div className="cashbook-report-metrics"><Metric label="Total In" value={moneyInr(totals.in)} /><Metric label="Total Out" value={moneyInr(totals.out)} /><Metric label="Net Balance" value={moneyInr(totals.in - totals.out)} /></div>
+        <div className="data-table cashbook-report-table"><div className="data-head"><span>Date</span><span>Total In</span><span>Total Out</span><span>Balance</span></div>{reportRows.length ? reportRows.map((row) => <div className="data-row" key={row.id}><span>{billDate(row.date)}</span><span className="cash-in">{moneyInr(row.totalIn)}</span><span className="cash-out">{moneyInr(row.totalOut)}</span><span className={row.balance >= 0 ? "cash-in" : "cash-out"}>{moneyInr(row.balance)}</span></div>) : <p className="empty-note">No cashbook transactions in this period.</p>}</div>
+      </div>
+      {downloadDialogOpen ? <div className="receipt-modal-backdrop" role="presentation" onClick={() => setDownloadDialogOpen(false)}><section className="receipt-modal cashbook-download-dialog" role="dialog" aria-modal="true" aria-label="Download PDF" onClick={(event) => event.stopPropagation()}><header><div><h2>Download PDF</h2></div><button className="icon-action" type="button" onClick={() => setDownloadDialogOpen(false)}>x</button></header><div className="cashbook-download-options"><label><input type="radio" checked={downloadType === "detailed"} onChange={() => setDownloadType("detailed")} /> Detailed report with all entries</label><label><input type="radio" checked={downloadType === "summary"} onChange={() => setDownloadType("summary")} /> Day wise summary report</label></div><div className="modal-form-actions"><button className="primary-button" type="button" onClick={openPrintableReport}>Download</button></div></section></div> : null}
+    </section>
   );
 }
 

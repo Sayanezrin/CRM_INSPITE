@@ -559,6 +559,181 @@ button:disabled {
 .transaction-type-picker .in.selected { border-color: #9bd5b4; background: #edf9f1; }
 .cashbook-report-modal { width: min(760px, calc(100vw - 32px)); }
 
+.cashbook-report-page {
+  min-height: calc(100vh - 52px);
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  margin: -26px;
+  background: #fff;
+}
+
+.cashbook-report-sidebar {
+  border-right: 1px solid #e0e6ef;
+  background: #f7f8fa;
+  display: grid;
+  align-content: start;
+}
+
+.cashbook-report-sidebar h2 {
+  margin: 0;
+  padding: 22px 20px;
+  border-bottom: 1px solid #e0e6ef;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.cashbook-report-sidebar > span {
+  padding: 12px 24px;
+  color: #3f4a5f;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.report-menu-item {
+  position: relative;
+  min-height: 96px;
+  border: 0;
+  border-bottom: 1px solid #e2e7ef;
+  border-radius: 0;
+  background: #fff;
+  color: #18212f;
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 2px 16px;
+  padding: 18px 26px;
+  text-align: left;
+}
+
+.report-menu-item:disabled {
+  opacity: 1;
+}
+
+.report-menu-item.active::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 5px;
+  background: var(--blue);
+}
+
+.report-icon {
+  grid-row: span 2;
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  background: #2f73df;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.report-icon.muted {
+  background: #e9eaec;
+  color: #7a828d;
+}
+
+.report-menu-item strong {
+  font-size: 17px;
+}
+
+.report-menu-item small {
+  color: #4f5a6d;
+  font-size: 13px;
+}
+
+.cashbook-report-content {
+  min-width: 0;
+  padding: 20px;
+  display: grid;
+  align-content: start;
+  gap: 20px;
+}
+
+.cashbook-report-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #e0e6ef;
+}
+
+.cashbook-report-header h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.cashbook-report-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.cashbook-report-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 14px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #e9edf3;
+}
+
+.cashbook-report-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 240px));
+  gap: 18px;
+}
+
+.cashbook-report-metrics .metric:nth-child(1) {
+  background: #eaf8f3;
+  border-left-color: var(--green);
+}
+
+.cashbook-report-metrics .metric:nth-child(2) {
+  background: #fff2f2;
+  border-left-color: var(--red);
+}
+
+.cashbook-report-metrics .metric:nth-child(3) {
+  background: #eaf2ff;
+}
+
+.cashbook-report-table .data-head,
+.cashbook-report-table .data-row {
+  grid-template-columns: 1.1fr 1fr 1fr 1fr;
+  min-width: 720px;
+}
+
+.cashbook-download-dialog {
+  width: min(560px, calc(100vw - 32px));
+  grid-template-rows: auto auto auto;
+}
+
+.cashbook-download-options {
+  display: grid;
+  padding: 18px 30px;
+}
+
+.cashbook-download-options label {
+  min-height: 82px;
+  border-bottom: 1px solid #e5e9f0;
+  display: flex;
+  grid-template-columns: none;
+  align-items: center;
+  gap: 12px;
+  color: #60646d;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.cashbook-download-options input {
+  width: 22px;
+  min-height: 22px;
+  accent-color: var(--blue);
+}
+
 .overview-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(130px, 1fr));
