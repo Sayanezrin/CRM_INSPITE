@@ -361,6 +361,125 @@ button:disabled {
   min-width: 150px;
 }
 
+.cashbook-panel {
+  align-content: start;
+}
+
+.cashbook-toolbar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 320px));
+  gap: 18px;
+  align-items: end;
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.cashbook-day-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.cashbook-day-header div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.cashbook-day-header span,
+.cashbook-day-totals {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.cashbook-day-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.cashbook-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 16px;
+  padding-top: 8px;
+}
+
+.cashbook-actions button {
+  min-height: 48px;
+  border: 0;
+  border-radius: 7px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.cashbook-out-button {
+  background: #ffe1df;
+  color: #d92323;
+}
+
+.cashbook-in-button {
+  background: #d4f8df;
+  color: #00834d;
+}
+
+.cashbook-entry-modal {
+  width: min(520px, 100%);
+}
+
+.cashbook-entry-form {
+  display: grid;
+  gap: 18px;
+  padding: 18px;
+}
+
+.cashbook-entry-form textarea {
+  min-height: 120px;
+}
+
+.cashbook-out-title {
+  color: #d92323;
+}
+
+.cashbook-in-title {
+  color: #00834d;
+}
+
+.cashbook-payment-options {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
+.cashbook-payment-options legend {
+  width: 100%;
+  margin-bottom: 2px;
+  color: #344154;
+  font-weight: 700;
+}
+
+.cashbook-payment-options label {
+  display: inline-flex;
+  grid-template-columns: none;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.cashbook-payment-options input {
+  width: auto;
+  min-height: 0;
+}
+
+.cashbook-bill-field input {
+  padding: 9px 10px;
+}
+
 .billing-form {
   align-items: start;
 }
@@ -1428,6 +1547,11 @@ button:disabled {
   }
 
   .table-filter-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .cashbook-toolbar,
+  .cashbook-actions {
     grid-template-columns: 1fr;
   }
 

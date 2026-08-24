@@ -383,6 +383,15 @@ const ledgerCsvColumns = ["id", "type", "date", "account", "category", "amount",
 const expenseCsvColumns = ["id", "employeeId", "employeeName", "category", "date", "amount", "notes", "status", "submittedAt", "createdBy", "receiptName"];
 const financeExportColumns = financeRegisterColumns;
 const TOAST_EVENT = "inspite-toast";
+const cashbookColumns = [
+  { key: "time", label: "Time" },
+  { key: "paymentMode", label: "Payment Mode" },
+  { key: "description", label: "Description" },
+  { key: "out", label: "Out", currency: true },
+  { key: "in", label: "In", currency: true },
+  { key: "createdBy", label: "Created By" },
+  { key: "receiptName", label: "Bill" }
+];
 
 function toast(message, type = "success") {
   window.dispatchEvent(new CustomEvent(TOAST_EVENT, { detail: { id: uid("TOAST"), message, type } }));
@@ -1224,6 +1233,7 @@ const navItems = [
   { id: "home", label: "Home" },
   { id: "logins", label: "Add Login", roles: ["admin"] },
   { id: "employees", label: "Employees" },
+  { id: "cashbook", label: "Cashbook", roles: ["admin", "hr"] },
   { id: "finance", label: "Finance", roles: ["admin", "hr"] },
   { id: "billing", label: "Billing", roles: ["admin", "hr"] },
   { id: "cashbook", label: "Cashbook", roles: ["admin", "hr"] },
@@ -1295,6 +1305,7 @@ function RolePage({ session, activePage, store, commit, commitAttendance, delete
 function AdminPage({ activePage, store, commit, commitAttendance, deleteAttendance, session }) {
   if (activePage === "logins") return <DashboardGrid><AddLoginPanel commit={commit} /><LoginAccessTable logins={store.logins || []} commit={commit} className="full-row-panel" /></DashboardGrid>;
   if (activePage === "employees") return <DashboardGrid><AddEmployeePanel commit={commit} /><EmployeeTable employees={store.employees} commit={commit} canDelete className="full-row-panel" /></DashboardGrid>;
+  if (activePage === "cashbook") return <CashbookPanel store={store} commit={commit} createdBy="Admin" />;
   if (activePage === "finance") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} createdBy="Admin" title="Add Debit Expense" /><FinancePanel store={store} commit={commit} canManage canExport className="full-row-panel" /></DashboardGrid>;
   if (activePage === "billing") return <BillingPage store={store} commit={commit} createdBy="Admin" />;
   if (activePage === "cashbook") return <CashbookPage store={store} commit={commit} createdBy="Admin" />;
@@ -1306,6 +1317,7 @@ function AdminPage({ activePage, store, commit, commitAttendance, deleteAttendan
 
 function HrPage({ activePage, store, commit, commitAttendance, deleteAttendance, session }) {
   if (activePage === "employees") return <DashboardGrid><EmployeeTable employees={store.employees} /></DashboardGrid>;
+  if (activePage === "cashbook") return <CashbookPanel store={store} commit={commit} createdBy="Accountant" />;
   if (activePage === "leave") return <DashboardGrid><LeaveTable leaves={store.leaves} /></DashboardGrid>;
   if (activePage === "expenses") return <DashboardGrid><ApprovalPanel title="Expense Approval Queue" items={store.expenses} kind="expenses" commit={commit} /><ExpenseTable expenses={store.expenses} /></DashboardGrid>;
   if (activePage === "attendance") return <AttendancePage store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} session={session} />;
@@ -3378,6 +3390,229 @@ function getTotals(rows) {
     summary[item.type.toLowerCase()] += Number(item.amount);
     return summary;
   }, { credit: 0, debit: 0 });
+}
+
+function formatCashbookDate(value) {
+  const date = parseRecordDate(value);
+  if (!date) return value || "--";
+  return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function buildCashbookRows(store) {
+  return (store.ledger || [])
+    .filter((item) => item.cashbook || item.source === "Cashbook")
+    .map((item) => {
+      const type = String(item.type || "Credit").toLowerCase();
+      const amount = Number(item.amount || 0);
+      return {
+        id: item.id,
+        date: item.date,
+        time: item.time || "--",
+        paymentMode: item.paymentMode || item.changeMode || "Cash",
+        description: item.note || item.narration || item.category || "--",
+        out: type === "debit" ? amount : "",
+        in: type === "credit" ? amount : "",
+        amount,
+        type,
+        createdBy: item.createdBy || "--",
+        receipt: item.receipt,
+        receiptName: item.receipt?.name || "--"
+      };
+    })
+    .sort((a, b) => {
+      const first = `${a.date || ""} ${a.time || ""}`;
+      const second = `${b.date || ""} ${b.time || ""}`;
+      return second.localeCompare(first);
+    });
+}
+
+function cashbookBalance(rows) {
+  return rows.reduce((sum, row) => sum + Number(row.in || 0) - Number(row.out || 0), 0);
+}
+
+function CashbookPanel({ store, commit, createdBy }) {
+  const [selectedDate, setSelectedDate] = useState(today());
+  const [paymentMode, setPaymentMode] = useState("All");
+  const [entryMode, setEntryMode] = useState(null);
+  const rows = buildCashbookRows(store);
+  const visibleRows = rows.filter((row) => (
+    isSameRecordDate(row.date, selectedDate)
+    && (paymentMode === "All" || String(row.paymentMode).toLowerCase() === paymentMode.toLowerCase())
+  ));
+  const todaysRows = rows.filter((row) => isSameRecordDate(row.date, selectedDate));
+  const totalBalance = cashbookBalance(rows);
+  const todaysBalance = cashbookBalance(todaysRows);
+
+  const saveCashbookEntry = ({ amount, description, mode, date, receipt }) => {
+    const normalizedAmount = Number(amount || 0);
+    if (!normalizedAmount) {
+      toast("Enter amount before saving cashbook entry.", "error");
+      return false;
+    }
+    const payment = String(mode || "Cash").trim();
+    const type = entryMode === "out" ? "Debit" : "Credit";
+    const now = new Date();
+    commit((current) => ({
+      ...current,
+      ledger: [{
+        id: uid("CASH"),
+        cashbook: true,
+        source: "Cashbook",
+        type,
+        date: date || today(),
+        time: now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
+        account: "Cashbook",
+        category: payment,
+        amount: normalizedAmount,
+        note: description.trim(),
+        createdBy,
+        paymentMode: payment,
+        changeMode: payment,
+        narration: description.trim(),
+        receipt
+      }, ...(current.ledger || [])]
+    }));
+    toast(`${entryMode === "out" ? "Out" : "In"} entry saved.`);
+    setEntryMode(null);
+    return true;
+  };
+
+  return (
+    <DashboardGrid>
+      <Panel title="Cashbook" className="full-row-panel cashbook-panel">
+        <div className="finance-summary">
+          <Metric label="Total Balance" value={money(totalBalance)} />
+          <Metric label="Todays Balance" value={money(todaysBalance)} />
+          <Metric label="Entries" value={visibleRows.length} />
+        </div>
+        <div className="cashbook-toolbar">
+          <label>Date<input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} /></label>
+          <label>Payment Mode<select value={paymentMode} onChange={(event) => setPaymentMode(event.target.value)}>
+            <option>All</option>
+            <option>Cash</option>
+            <option>Online</option>
+          </select></label>
+        </div>
+        <div className="cashbook-day-header">
+          <div>
+            <strong>{formatCashbookDate(selectedDate)} {selectedDate === today() ? "(TODAY)" : ""}</strong>
+            <span>{visibleRows.length} Entries</span>
+          </div>
+          <div className="cashbook-day-totals">
+            <span>OUT {money(visibleRows.reduce((sum, row) => sum + Number(row.out || 0), 0))}</span>
+            <span>IN {money(visibleRows.reduce((sum, row) => sum + Number(row.in || 0), 0))}</span>
+          </div>
+        </div>
+        {visibleRows.length ? (
+          <DataTable rows={visibleRows} columns={cashbookColumns} className="cashbook-records" />
+        ) : (
+          <p className="empty-note">No cashbook entries for this date.</p>
+        )}
+        <div className="cashbook-actions">
+          <button type="button" className="cashbook-out-button" onClick={() => setEntryMode("out")}>OUT</button>
+          <button type="button" className="cashbook-in-button" onClick={() => setEntryMode("in")}>IN</button>
+        </div>
+      </Panel>
+      {entryMode ? (
+        <CashbookEntryModal
+          entryMode={entryMode}
+          selectedDate={selectedDate}
+          onClose={() => setEntryMode(null)}
+          onSave={saveCashbookEntry}
+        />
+      ) : null}
+    </DashboardGrid>
+  );
+}
+
+function CashbookEntryModal({ entryMode, selectedDate, onClose, onSave }) {
+  const [form, setForm] = useState({ amount: "", description: "", mode: "Cash", date: selectedDate || today() });
+  const [receipt, setReceipt] = useState(null);
+  const [receiptError, setReceiptError] = useState("");
+  const isOut = entryMode === "out";
+
+  const handleReceiptUpload = async (event) => {
+    const file = event.target.files?.[0];
+    setReceiptError("");
+    if (!file) {
+      setReceipt(null);
+      return;
+    }
+    const allowed = file.type.startsWith("image/") || file.type === "application/pdf";
+    if (!allowed) {
+      setReceiptError("Upload an image or PDF bill.");
+      toast("Upload an image or PDF bill.", "error");
+      event.target.value = "";
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setReceiptError("Bill must be 2 MB or smaller for web storage.");
+      toast("Bill must be 2 MB or smaller.", "error");
+      event.target.value = "";
+      return;
+    }
+    try {
+      setReceipt({ name: file.name, type: file.type, size: file.size, dataUrl: await fileToDataUrl(file) });
+      toast("Bill uploaded.");
+    } catch {
+      setReceiptError("Could not read this bill. Please try another file.");
+      toast("Could not read this bill.", "error");
+    }
+  };
+
+  const submitEntry = (event) => {
+    event.preventDefault();
+    const saved = onSave({
+      amount: form.amount,
+      description: form.description,
+      mode: form.mode,
+      date: form.date,
+      receipt
+    });
+    if (saved) {
+      setForm({ amount: "", description: "", mode: "Cash", date: selectedDate || today() });
+      setReceipt(null);
+      setReceiptError("");
+    }
+  };
+
+  return (
+    <div className="receipt-modal-backdrop cashbook-modal-backdrop" role="presentation" onClick={onClose}>
+      <section className="receipt-modal login-edit-modal cashbook-entry-modal" role="dialog" aria-modal="true" aria-label={`${isOut ? "Out" : "In"} cashbook entry`} onClick={(event) => event.stopPropagation()}>
+        <header>
+          <div>
+            <h2 className={isOut ? "cashbook-out-title" : "cashbook-in-title"}>{isOut ? "Out Entry" : "In Entry"}</h2>
+          </div>
+          <button type="button" className="icon-action" aria-label="Close cashbook entry" title="Close" onClick={onClose}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 6l12 12" />
+              <path d="M18 6L6 18" />
+            </svg>
+          </button>
+        </header>
+        <form className="cashbook-entry-form" onSubmit={submitEntry}>
+          <label>Amount<input type="number" min="0" step="0.01" placeholder="Enter Amount" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} /></label>
+          <label>Description<textarea placeholder="Enter Details (Item Name, Bill No, Quantity, etc)" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
+          <fieldset className="cashbook-payment-options">
+            <legend>Payment Mode</legend>
+            <label><input type="radio" name="paymentMode" value="Cash" checked={form.mode === "Cash"} onChange={(event) => setForm({ ...form, mode: event.target.value })} /> Cash</label>
+            <label><input type="radio" name="paymentMode" value="Online" checked={form.mode === "Online"} onChange={(event) => setForm({ ...form, mode: event.target.value })} /> Online</label>
+          </fieldset>
+          <label>Date<input type="date" value={dateInputValue(form.date)} onChange={(event) => setForm({ ...form, date: event.target.value })} /></label>
+          <label className="receipt-field cashbook-bill-field">
+            <span>Attach Bill</span>
+            <input type="file" accept="image/*,.pdf,application/pdf" onChange={handleReceiptUpload} />
+            <small>{receipt ? receipt.name : "PNG, JPG, or PDF up to 2 MB"}</small>
+            {receiptError && <em>{receiptError}</em>}
+          </label>
+          <div className="modal-form-actions">
+            <button type="button" className="secondary-button" onClick={onClose}>Cancel</button>
+            <button type="submit" className="primary-button">{isOut ? "Save Out Entry" : "Save In Entry"}</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
 }
 
 function FinancePanel({ store, commit, canManage = false, canExport = false, className = "" }) {
