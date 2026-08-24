@@ -1,0 +1,17 @@
+node_modules/
+.pnpm-store/
+client/node_modules/
+server/node_modules/
+client/dist/
+dist/
+bin/
+obj/
+.vs/
+.vscode/
+*.user
+.env
+.env.local
+client/.env
+client/.env.local
+client/*.log
+server/App_Data/
