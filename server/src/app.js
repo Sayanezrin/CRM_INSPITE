@@ -29,7 +29,8 @@ const emptyPortalState = {
   leaves: [],
   attendance: [],
   bills: [],
-  cashbook: []
+  cashbook: [],
+  tasks: []
 };
 
 const employee = {
@@ -142,7 +143,7 @@ function isAllowed(session, pathValue, method) {
   if (session.role === "admin") return true;
   if (session.role === "hr") return !pathValue.startsWith("/api/candidates") || method !== "DELETE";
   if (session.role === "employee") {
-    return (pathValue === "/api/portal" && method === "GET")
+    return (pathValue === "/api/portal" && (method === "GET" || method === "PUT"))
       || (pathValue === "/api/portal/me" && method === "GET")
       || (pathValue === "/api/portal/attendance-record" && method === "POST")
       || pathValue.startsWith("/api/attendance")
@@ -231,7 +232,8 @@ function normalizePortalState(payload) {
     logins: payload?.logins || [],
     attendance: payload?.attendance || [],
     bills: payload?.bills || [],
-    cashbook: payload?.cashbook || []
+    cashbook: payload?.cashbook || [],
+    tasks: payload?.tasks || []
   };
   return ensureEmployeeProfilesForLogins(normalized);
 }
@@ -331,6 +333,7 @@ function mergePortalState(currentState, incomingState) {
     leaves: nextState.leaves || [],
     bills: nextState.bills || [],
     cashbook: nextState.cashbook || [],
+    tasks: nextState.tasks || [],
     attendance: mergeAttendanceRecords(currentState.attendance || [], nextState.attendance || [])
   };
 }

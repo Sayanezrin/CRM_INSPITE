@@ -27,7 +27,8 @@ const seedState = {
   leaves: [],
   attendance: [],
   bills: [],
-  cashbook: []
+  cashbook: [],
+  tasks: []
 };
 
 function today() {
@@ -1236,6 +1237,7 @@ const navItems = [
   { id: "cashbook", label: "Cashbook", roles: ["admin", "hr"] },
   { id: "finance", label: "Finance", roles: ["admin", "hr"] },
   { id: "billing", label: "Billing", roles: ["admin", "hr"] },
+  { id: "tasks", label: "Tasks & Reports" },
   { id: "leave", label: "Leave" },
   { id: "expenses", label: "Expenses" },
   { id: "attendance", label: "Attendance" }
@@ -1307,6 +1309,7 @@ function AdminPage({ activePage, store, commit, commitAttendance, deleteAttendan
   if (activePage === "finance") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} createdBy="Admin" title="Add Debit Expense" /><FinancePanel store={store} commit={commit} canManage canExport className="full-row-panel" /></DashboardGrid>;
   if (activePage === "billing") return <BillingPage store={store} commit={commit} createdBy="Admin" />;
   if (activePage === "cashbook") return <CashbookPage store={store} commit={commit} createdBy="Admin" />;
+  if (activePage === "tasks") return <TaskManagerPage store={store} commit={commit} session={session} />;
   if (activePage === "leave") return <DashboardGrid><ApprovalPanel title="Leave Applications" items={store.leaves} kind="leaves" commit={commit} /><LeaveTable leaves={store.leaves} /></DashboardGrid>;
   if (activePage === "expenses") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} /><ApprovalPanel title="Expense Approvals" items={store.expenses} kind="expenses" commit={commit} className="full-row-panel" /><ExpenseTable expenses={store.expenses} className="full-row-panel" /></DashboardGrid>;
   if (activePage === "attendance") return <AttendancePage store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} session={session} />;
@@ -1321,16 +1324,19 @@ function HrPage({ activePage, store, commit, commitAttendance, deleteAttendance,
   if (activePage === "finance") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} createdBy="HR" title="Add Debit Expense" /><FinancePanel store={store} canExport className="full-row-panel" /></DashboardGrid>;
   if (activePage === "billing") return <BillingPage store={store} commit={commit} createdBy="Accountant" />;
   if (activePage === "cashbook") return <CashbookPage store={store} commit={commit} createdBy="Accountant" />;
+  if (activePage === "tasks") return <TaskManagerPage store={store} commit={commit} session={session} />;
   return <DashboardGrid><FinancePanel store={store} canExport className="full-row-panel" /><ApprovalPanel title="Expense Approval Queue" items={store.expenses} kind="expenses" commit={commit} className="full-row-panel" /></DashboardGrid>;
 }
 
 function EmployeePage({ activePage, store, commit, commitAttendance, session, onEmployeeProfileLoaded }) {
   const currentEmployee = getEmployeeForSession(store, session);
+  if (!currentEmployee && activePage === "tasks") return <TaskManagerPage store={store} commit={commit} session={session} currentEmployee={taskEmployeeFromSession(session)} />;
   if (!currentEmployee) return <EmployeeProfileMissing session={session} onEmployeeProfileLoaded={onEmployeeProfileLoaded} />;
   if (activePage === "employees") return <DashboardGrid><EmployeeProfilePanel employee={currentEmployee} /></DashboardGrid>;
   if (activePage === "leave") return <DashboardGrid><LeaveFormPanel store={store} commit={commit} currentEmployee={currentEmployee} /><LeaveTable leaves={store.leaves.filter((item) => item.employeeId === currentEmployee.id)} /></DashboardGrid>;
   if (activePage === "expenses") return <DashboardGrid><ExpenseFormPanel store={store} commit={commit} currentEmployee={currentEmployee} /><ExpenseTable expenses={store.expenses.filter((item) => item.employeeId === currentEmployee.id)} /></DashboardGrid>;
   if (activePage === "attendance") return <DashboardGrid><EmployeeAttendancePanel store={store} commit={commitAttendance} currentEmployee={currentEmployee} /></DashboardGrid>;
+  if (activePage === "tasks") return <TaskManagerPage store={store} commit={commit} session={session} currentEmployee={currentEmployee} />;
   return <EmployeeHome store={store} commit={commit} commitAttendance={commitAttendance} currentEmployee={currentEmployee} />;
 }
 
@@ -1512,6 +1518,248 @@ function AdminHome({ store, commit }) {
       <ApprovalPanel title="Expense Approvals" items={store.expenses.filter((item) => item.status === "Pending")} kind="expenses" commit={commit} className="full-row-panel" />
       <AttendanceTable attendance={store.attendance.slice(0, 5)} employees={store.employees} title="Recent Attendance" className="full-row-panel" showReports={false} />
     </DashboardGrid>
+  );
+}
+
+const taskStatuses = [
+  { id: "todo", label: "To Do" },
+  { id: "progress", label: "In Progress" },
+  { id: "done", label: "Done" }
+];
+
+function taskStatusLabel(status) {
+  return taskStatuses.find((item) => item.id === status)?.label || "To Do";
+}
+
+function taskEmployeeName(task, employees = []) {
+  return task.employeeName || employees.find((employee) => employee.id === task.employeeId)?.name || task.employeeEmail || "Employee";
+}
+
+function taskEmployeeFromSession(session) {
+  return {
+    id: `SESSION-${String(session.email || "employee").trim().toLowerCase()}`,
+    name: session.name || session.email || "Employee",
+    email: session.email || "",
+    accessRole: "employee"
+  };
+}
+
+function taskReportRows(tasks = [], employees = []) {
+  return [...tasks]
+    .sort((first, second) => String(second.date || "").localeCompare(String(first.date || "")) || String(second.updatedAt || "").localeCompare(String(first.updatedAt || "")))
+    .map((task) => ({
+      id: task.id,
+      date: billDate(task.date),
+      employee: taskEmployeeName(task, employees),
+      title: task.title,
+      details: task.details,
+      status: taskStatusLabel(task.status),
+      updatedAt: task.updatedAt ? new Date(task.updatedAt).toLocaleString("en-IN") : ""
+    }));
+}
+
+function TaskManagerPage({ store, commit, session, currentEmployee }) {
+  const isAdminView = session.role !== "employee";
+  const employee = currentEmployee || getEmployeeForSession(store, session);
+  const [taskDraft, setTaskDraft] = useState({ title: "", details: "", date: today() });
+  const [dateFilter, setDateFilter] = useState("");
+  const [employeeFilter, setEmployeeFilter] = useState("all");
+  const allTasks = store.tasks || [];
+  const scopedTasks = isAdminView
+    ? allTasks
+    : allTasks.filter((task) => task.employeeId === employee?.id || task.employeeEmail?.toLowerCase() === session.email?.toLowerCase());
+  const visibleTasks = scopedTasks.filter((task) => (
+    (!dateFilter || task.date === dateFilter) &&
+    (employeeFilter === "all" || task.employeeId === employeeFilter)
+  ));
+  const reportRows = taskReportRows(visibleTasks, store.employees || []);
+  const totals = taskStatuses.reduce((summary, status) => ({
+    ...summary,
+    [status.id]: visibleTasks.filter((task) => task.status === status.id).length
+  }), {});
+
+  const addTask = (event) => {
+    event.preventDefault();
+    if (!employee) {
+      toast("Employee profile is required before adding tasks.", "error");
+      return;
+    }
+    if (!taskDraft.title.trim()) {
+      toast("Enter a task before adding it.", "error");
+      return;
+    }
+    const now = new Date().toISOString();
+    const nextTask = {
+      id: uid("TASK"),
+      employeeId: employee.id,
+      employeeName: employee.name,
+      employeeEmail: employee.email || session.email,
+      title: taskDraft.title.trim(),
+      details: taskDraft.details.trim(),
+      date: taskDraft.date || today(),
+      status: "todo",
+      createdAt: now,
+      updatedAt: now
+    };
+    commit((current) => ({ ...current, tasks: [nextTask, ...(current.tasks || [])] }));
+    setTaskDraft({ title: "", details: "", date: today() });
+    toast("Task added to To Do.");
+  };
+
+  const updateTaskStatus = (taskId, status) => {
+    const task = scopedTasks.find((item) => item.id === taskId);
+    if (!task || task.status === status) return;
+    if (!isAdminView && task.employeeId !== employee?.id) return;
+    commit((current) => ({
+      ...current,
+      tasks: (current.tasks || []).map((item) => item.id === taskId ? { ...item, status, updatedAt: new Date().toISOString() } : item)
+    }));
+    toast(`Task moved to ${taskStatusLabel(status)}.`);
+  };
+
+  const deleteTask = (taskId) => {
+    const task = scopedTasks.find((item) => item.id === taskId);
+    if (!task || (!isAdminView && task.employeeId !== employee?.id)) return;
+    if (!window.confirm("Delete this task?")) return;
+    commit((current) => ({ ...current, tasks: (current.tasks || []).filter((item) => item.id !== taskId) }));
+    toast("Task deleted.");
+  };
+
+  const exportConsolidatedReport = () => {
+    if (!reportRows.length) {
+      toast("No task records available for this report.", "error");
+      return;
+    }
+    downloadExcelReport("task-consolidated-report.xls", "Task Consolidated Report", [{
+      title: "Task Summary",
+      rows: reportRows,
+      columns: [
+        { key: "date", label: "Date" },
+        { key: "employee", label: "Employee" },
+        { key: "title", label: "Task" },
+        { key: "details", label: "Details" },
+        { key: "status", label: "Status" },
+        { key: "updatedAt", label: "Last Updated" }
+      ]
+    }]);
+  };
+
+  if (!isAdminView && !employee) {
+    return (
+      <DashboardGrid>
+        <Panel title="Task Manager" className="full-row-panel">
+          <p className="empty-note">No employee profile is linked to {session.email}. Ask Admin to add this email before creating daily tasks.</p>
+        </Panel>
+      </DashboardGrid>
+    );
+  }
+
+  return (
+    <DashboardGrid>
+      <Panel title={isAdminView ? "Task Report" : "Add Daily Task"} className="full-row-panel">
+        <div className="task-toolbar">
+          <div className="task-metrics">
+            <Metric label="To Do" value={totals.todo || 0} />
+            <Metric label="In Progress" value={totals.progress || 0} />
+            <Metric label="Done" value={totals.done || 0} />
+          </div>
+          {isAdminView ? (
+            <button type="button" className="primary-button" onClick={exportConsolidatedReport}>Consolidated Report</button>
+          ) : null}
+        </div>
+        {isAdminView ? (
+          <div className="task-filters">
+            <label>Date<input type="date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} /></label>
+            <label>Employee<select value={employeeFilter} onChange={(event) => setEmployeeFilter(event.target.value)}><option value="all">All employees</option>{(store.employees || []).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+            <button type="button" className="secondary-button" onClick={() => { setDateFilter(""); setEmployeeFilter("all"); }}>Clear Filters</button>
+          </div>
+        ) : (
+          <form className="task-form" onSubmit={addTask}>
+            <input placeholder="Task title" value={taskDraft.title} onChange={(event) => setTaskDraft({ ...taskDraft, title: event.target.value })} />
+            <input type="date" value={taskDraft.date} onChange={(event) => setTaskDraft({ ...taskDraft, date: event.target.value })} />
+            <textarea placeholder="Task details" value={taskDraft.details} onChange={(event) => setTaskDraft({ ...taskDraft, details: event.target.value })} />
+            <button className="primary-button">Add To Do</button>
+          </form>
+        )}
+      </Panel>
+      <Panel title={isAdminView ? "Team Task Board" : "My Task Board"} className="full-row-panel">
+        <TaskBoard
+          tasks={visibleTasks}
+          employees={store.employees || []}
+          canMove={!isAdminView}
+          canDelete
+          showEmployee={isAdminView}
+          onMove={updateTaskStatus}
+          onDelete={deleteTask}
+        />
+      </Panel>
+      {isAdminView ? (
+        <Panel title="Consolidated Task Report" className="full-row-panel">
+          <DataTable rows={reportRows} columns={[
+            { key: "date", label: "Date" },
+            { key: "employee", label: "Employee" },
+            { key: "title", label: "Task" },
+            { key: "details", label: "Details" },
+            { key: "status", label: "Status" },
+            { key: "updatedAt", label: "Last Updated" }
+          ]} className="task-report-table" />
+        </Panel>
+      ) : null}
+    </DashboardGrid>
+  );
+}
+
+function TaskBoard({ tasks, employees, canMove, canDelete, showEmployee, onMove, onDelete }) {
+  const [dragOverStatus, setDragOverStatus] = useState("");
+  const tasksByStatus = taskStatuses.reduce((grouped, status) => ({
+    ...grouped,
+    [status.id]: tasks.filter((task) => task.status === status.id)
+  }), {});
+
+  const dropTask = (event, status) => {
+    event.preventDefault();
+    setDragOverStatus("");
+    const taskId = event.dataTransfer.getData("text/plain");
+    if (taskId) onMove(taskId, status);
+  };
+
+  return (
+    <div className="task-board">
+      {taskStatuses.map((status) => (
+        <section
+          className={`task-column ${dragOverStatus === status.id ? "drag-over" : ""}`}
+          key={status.id}
+          onDragOver={(event) => { if (canMove) { event.preventDefault(); setDragOverStatus(status.id); } }}
+          onDragLeave={() => setDragOverStatus("")}
+          onDrop={(event) => canMove && dropTask(event, status.id)}
+        >
+          <header><h3>{status.label}</h3><span>{tasksByStatus[status.id].length}</span></header>
+          <div className="task-card-list">
+            {tasksByStatus[status.id].length ? tasksByStatus[status.id].map((task) => (
+              <article
+                className="task-card"
+                key={task.id}
+                draggable={canMove}
+                onDragStart={(event) => event.dataTransfer.setData("text/plain", task.id)}
+              >
+                <div>
+                  <strong>{task.title}</strong>
+                  {showEmployee ? <span>{taskEmployeeName(task, employees)}</span> : null}
+                  <small>{billDate(task.date)}</small>
+                </div>
+                {task.details ? <p>{task.details}</p> : null}
+                <div className="task-card-actions">
+                  {canMove ? taskStatuses.filter((item) => item.id !== task.status).map((item) => (
+                    <button type="button" className="secondary-button" key={item.id} onClick={() => onMove(task.id, item.id)}>{item.label}</button>
+                  )) : <Status status={taskStatusLabel(task.status)} />}
+                  {canDelete ? <button type="button" className="icon-action danger" title="Delete task" onClick={() => onDelete(task.id)}>x</button> : null}
+                </div>
+              </article>
+            )) : <p className="empty-note">No tasks here.</p>}
+          </div>
+        </section>
+      ))}
+    </div>
   );
 }
 
@@ -1922,6 +2170,7 @@ function CashbookReportPage({ entries, onBack }) {
   const [sortMode, setSortMode] = useState("recent");
   const [downloadDialogOpen, setDownloadDialogOpen] = useState(false);
   const [downloadType, setDownloadType] = useState("detailed");
+  const [printViewType, setPrintViewType] = useState(null);
   const reportEntries = entries.filter((item) => isWithinDateRange(item.date, fromDate, toDate));
   const totals = cashbookTotals(reportEntries);
   const cashIn = reportEntries.filter((item) => item.type === "In" && item.paymentMode === "Cash").reduce((sum, item) => sum + Number(item.amount || 0), 0);
@@ -1947,35 +2196,7 @@ function CashbookReportPage({ entries, onBack }) {
   };
 
   const openPrintableReport = () => {
-    const reportWindow = window.open("", "_blank");
-    if (!reportWindow) {
-      toast("Allow pop-ups to download the cashbook PDF.", "error");
-      return;
-    }
-    const generatedAt = new Date().toLocaleString("en-IN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short", year: "2-digit" });
-    const rows = downloadType === "detailed"
-      ? reportEntries.map((entry) => `<tr><td>${escapeHtml(billDate(entry.date))}<br><small>${escapeHtml(entry.description)}</small></td><td>${entry.type === "In" ? moneyInr(entry.amount) : ""}</td><td>${entry.type === "Out" ? moneyInr(entry.amount) : ""}</td><td>${moneyInr(entry.type === "In" ? entry.amount : -Number(entry.amount || 0))}</td></tr>`).join("")
-      : reportRows.map((row) => `<tr><td>${escapeHtml(billDate(row.date))}<br><small>${row.entries} Entries</small></td><td>${moneyInr(row.totalIn)}</td><td>${moneyInr(row.totalOut)}</td><td>${moneyInr(row.balance)}</td></tr>`).join("");
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Cashbook Report</title><style>
-      body{font-family:Arial,sans-serif;color:#202431;margin:0;padding:34px;background:#fff}
-      .brand{display:flex;align-items:center;justify-content:space-between;gap:24px;border-bottom:1px solid #dfe5ee;padding-bottom:18px;margin-bottom:22px}
-      .brand img{width:150px;height:auto}.brand h1{margin:0;font-size:26px}.brand p{margin:5px 0;color:#667387}
-      .range{text-align:center;font-weight:700;margin:8px 0 22px}.totals{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px}
-      .metric{border:1px solid #e2e8f0;border-radius:8px;padding:14px}.metric strong{display:block;font-size:22px;margin-bottom:6px}.in{color:#00a45f}.out{color:#d92323}
-      .split{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;color:#526178}.split div{border:1px solid #edf0f5;border-radius:8px;padding:12px}
-      table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:12px;border-bottom:1px solid #e3e8ef;text-align:left;vertical-align:top}th{background:#f6f7f9;text-transform:uppercase;color:#3f4a5f;font-size:12px}
-      tfoot td{font-weight:800}.footer{margin-top:28px;color:#667387;font-size:12px;text-align:right}@media print{body{padding:20px}.no-print{display:none}}
-    </style></head><body>
-      <section class="brand"><img src="${inspiteLogoImage}" alt="Inspite"><div><h1>Cashbook Report</h1><p>My Business</p></div></section>
-      <p class="range">${escapeHtml(billDate(fromDate))} to ${escapeHtml(billDate(toDate))}</p>
-      <section class="totals"><div class="metric"><strong class="in">${moneyInr(totals.in)}</strong>Total IN (+)</div><div class="metric"><strong class="out">${moneyInr(totals.out)}</strong>Total OUT (-)</div><div class="metric"><strong>${moneyInr(totals.in - totals.out)}</strong>Net Balance</div></section>
-      <section class="split"><div>Cash : ${moneyInr(cashIn)}<br>Online : ${moneyInr(onlineIn)}<br>No. of entries : ${reportEntries.length}</div><div>Cash : ${moneyInr(cashOut)}<br>Online : ${moneyInr(onlineOut)}</div></section>
-      <table><thead><tr><th>Date</th><th>Total In</th><th>Total Out</th><th>Balance</th></tr></thead><tbody>${rows || '<tr><td colspan="4">No transactions in this period.</td></tr>'}</tbody><tfoot><tr><td>Grand Total</td><td>${moneyInr(totals.in)}</td><td>${moneyInr(totals.out)}</td><td>${moneyInr(totals.in - totals.out)}</td></tr></tfoot></table>
-      <p class="footer">Report generated : ${escapeHtml(generatedAt)}</p>
-      <script>window.addEventListener("load",()=>window.print());</script>
-    </body></html>`;
-    reportWindow.document.write(html);
-    reportWindow.document.close();
+    setPrintViewType(downloadType);
     setDownloadDialogOpen(false);
   };
 
@@ -1989,6 +2210,61 @@ function CashbookReportPage({ entries, onBack }) {
       { key: "balance", label: "Balance", currency: true }
     ]
   }]);
+
+  if (printViewType) {
+    const generatedAt = new Date().toLocaleString("en-IN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short", year: "2-digit" });
+    const printRows = printViewType === "detailed"
+      ? reportEntries.map((entry) => ({
+        id: entry.id,
+        date: billDate(entry.date),
+        note: entry.description,
+        inAmount: entry.type === "In" ? moneyInr(entry.amount) : "",
+        outAmount: entry.type === "Out" ? moneyInr(entry.amount) : "",
+        balance: moneyInr(entry.type === "In" ? entry.amount : -Number(entry.amount || 0))
+      }))
+      : reportRows.map((row) => ({
+        id: row.id,
+        date: billDate(row.date),
+        note: `${row.entries} Entries`,
+        inAmount: moneyInr(row.totalIn),
+        outAmount: moneyInr(row.totalOut),
+        balance: moneyInr(row.balance)
+      }));
+
+    return (
+      <section className="cashbook-print-page">
+        <div className="cashbook-print-actions no-print">
+          <button type="button" className="secondary-button" onClick={() => setPrintViewType(null)}>Back</button>
+          <button type="button" className="primary-button" onClick={() => window.print()}>Print / Save PDF</button>
+        </div>
+        <section className="cashbook-print-brand">
+          <img src={inspiteLogoImage} alt="Inspite" />
+          <div>
+            <h1>Cashbook Report</h1>
+            <p>My Business</p>
+          </div>
+        </section>
+        <p className="cashbook-print-range">{billDate(fromDate)} to {billDate(toDate)}</p>
+        <section className="cashbook-print-metrics">
+          <div><strong className="cash-in">{moneyInr(totals.in)}</strong><span>Total IN (+)</span></div>
+          <div><strong className="cash-out">{moneyInr(totals.out)}</strong><span>Total OUT (-)</span></div>
+          <div><strong>{moneyInr(totals.in - totals.out)}</strong><span>Net Balance</span></div>
+        </section>
+        <section className="cashbook-print-split">
+          <div>Cash : {moneyInr(cashIn)}<br />Online : {moneyInr(onlineIn)}<br />No. of entries : {reportEntries.length}</div>
+          <div>Cash : {moneyInr(cashOut)}<br />Online : {moneyInr(onlineOut)}</div>
+        </section>
+        <table className="cashbook-print-table">
+          <thead><tr><th>Date</th><th>Total In</th><th>Total Out</th><th>Balance</th></tr></thead>
+          <tbody>
+            {printRows.length ? printRows.map((row) => <tr key={row.id}><td>{row.date}<br /><small>{row.note}</small></td><td>{row.inAmount}</td><td>{row.outAmount}</td><td>{row.balance}</td></tr>) : <tr><td colSpan="4">No transactions in this period.</td></tr>}
+          </tbody>
+          <tfoot><tr><td>Grand Total</td><td>{moneyInr(totals.in)}</td><td>{moneyInr(totals.out)}</td><td>{moneyInr(totals.in - totals.out)}</td></tr></tfoot>
+        </table>
+        <p className="cashbook-print-footer">Report generated : {generatedAt}</p>
+      </section>
+    );
+  }
 
   return (
     <section className="cashbook-report-page">
@@ -2866,6 +3142,7 @@ function EmployeeTable({ employees, commit, canDelete = false, className = "" })
       leaves: current.leaves.filter((leave) => leave.employeeId !== employeeId),
       expenses: current.expenses.filter((expense) => expense.employeeId !== employeeId),
       attendance: current.attendance.filter((record) => record.employeeId !== employeeId),
+      tasks: (current.tasks || []).filter((task) => task.employeeId !== employeeId),
       logins: (current.logins || []).filter((login) => login.employeeId !== employeeId && login.email?.toLowerCase() !== employeeEmail)
     }));
     toast("Employee deleted.");
