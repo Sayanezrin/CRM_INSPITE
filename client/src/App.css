@@ -986,6 +986,93 @@ button:disabled {
   min-width: 920px;
 }
 
+.task-print-page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 28px;
+  background: #fff;
+  color: #202431;
+}
+
+.task-print-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.task-print-brand {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  border-bottom: 1px solid #dfe5ee;
+  padding-bottom: 18px;
+  margin-bottom: 22px;
+}
+
+.task-print-brand img {
+  width: 150px;
+  height: auto;
+}
+
+.task-print-brand h1 {
+  margin: 0;
+  font-size: 26px;
+}
+
+.task-print-brand p {
+  margin: 5px 0 0;
+  color: #667387;
+}
+
+.task-print-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.task-print-metrics div {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.task-print-metrics strong {
+  display: block;
+  font-size: 22px;
+  margin-bottom: 6px;
+}
+
+.task-print-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.task-print-table th,
+.task-print-table td {
+  padding: 10px;
+  border-bottom: 1px solid #e3e8ef;
+  text-align: left;
+  vertical-align: top;
+}
+
+.task-print-table th {
+  background: #f6f7f9;
+  text-transform: uppercase;
+  color: #3f4a5f;
+  font-size: 11px;
+}
+
+.task-print-footer {
+  margin-top: 28px;
+  color: #667387;
+  font-size: 12px;
+  text-align: right;
+}
+
 .dashboard-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1980,7 +2067,8 @@ button:disabled {
   .task-filters,
   .task-form,
   .task-board,
-  .task-metrics {
+  .task-metrics,
+  .task-print-metrics {
     grid-template-columns: 1fr;
   }
 
@@ -2087,6 +2175,12 @@ button:disabled {
   }
 
   .cashbook-print-page {
+    max-width: none;
+    margin: 0;
+    padding: 20px;
+  }
+
+  .task-print-page {
     max-width: none;
     margin: 0;
     padding: 20px;

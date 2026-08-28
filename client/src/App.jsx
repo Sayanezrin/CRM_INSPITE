@@ -1564,6 +1564,7 @@ function TaskManagerPage({ store, commit, session, currentEmployee }) {
   const [taskDraft, setTaskDraft] = useState({ title: "", details: "", date: today() });
   const [dateFilter, setDateFilter] = useState("");
   const [employeeFilter, setEmployeeFilter] = useState("all");
+  const [printReportOpen, setPrintReportOpen] = useState(false);
   const allTasks = store.tasks || [];
   const scopedTasks = isAdminView
     ? allTasks
@@ -1625,23 +1626,12 @@ function TaskManagerPage({ store, commit, session, currentEmployee }) {
     toast("Task deleted.");
   };
 
-  const exportConsolidatedReport = () => {
+  const openConsolidatedReport = () => {
     if (!reportRows.length) {
       toast("No task records available for this report.", "error");
       return;
     }
-    downloadExcelReport("task-consolidated-report.xls", "Task Consolidated Report", [{
-      title: "Task Summary",
-      rows: reportRows,
-      columns: [
-        { key: "date", label: "Date" },
-        { key: "employee", label: "Employee" },
-        { key: "title", label: "Task" },
-        { key: "details", label: "Details" },
-        { key: "status", label: "Status" },
-        { key: "updatedAt", label: "Last Updated" }
-      ]
-    }]);
+    setPrintReportOpen(true);
   };
 
   if (!isAdminView && !employee) {
@@ -1651,6 +1641,53 @@ function TaskManagerPage({ store, commit, session, currentEmployee }) {
           <p className="empty-note">No employee profile is linked to {session.email}. Ask Admin to add this email before creating daily tasks.</p>
         </Panel>
       </DashboardGrid>
+    );
+  }
+
+  if (isAdminView && printReportOpen) {
+    const generatedAt = new Date().toLocaleString("en-IN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short", year: "numeric" });
+    const periodLabel = dateFilter ? billDate(dateFilter) : "All dates";
+    const employeeLabel = employeeFilter === "all"
+      ? "All employees"
+      : store.employees.find((item) => item.id === employeeFilter)?.name || "Selected employee";
+
+    return (
+      <section className="task-print-page">
+        <div className="task-print-actions no-print">
+          <button type="button" className="secondary-button" onClick={() => setPrintReportOpen(false)}>Back</button>
+          <button type="button" className="primary-button" onClick={() => window.print()}>Print / Save PDF</button>
+        </div>
+        <section className="task-print-brand">
+          <img src={inspiteLogoImage} alt="Inspite" />
+          <div>
+            <h1>Task Consolidated Report</h1>
+            <p>{employeeLabel}</p>
+            <p>{periodLabel}</p>
+          </div>
+        </section>
+        <section className="task-print-metrics">
+          <div><strong>{totals.todo || 0}</strong><span>To Do</span></div>
+          <div><strong>{totals.progress || 0}</strong><span>In Progress</span></div>
+          <div><strong>{totals.done || 0}</strong><span>Done</span></div>
+          <div><strong>{reportRows.length}</strong><span>Total Tasks</span></div>
+        </section>
+        <table className="task-print-table">
+          <thead><tr><th>Date</th><th>Employee</th><th>Task</th><th>Details</th><th>Status</th><th>Last Updated</th></tr></thead>
+          <tbody>
+            {reportRows.map((row) => (
+              <tr key={row.id}>
+                <td>{row.date}</td>
+                <td>{row.employee}</td>
+                <td>{row.title}</td>
+                <td>{row.details || "--"}</td>
+                <td>{row.status}</td>
+                <td>{row.updatedAt || "--"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="task-print-footer">Report generated : {generatedAt}</p>
+      </section>
     );
   }
 
@@ -1664,7 +1701,7 @@ function TaskManagerPage({ store, commit, session, currentEmployee }) {
             <Metric label="Done" value={totals.done || 0} />
           </div>
           {isAdminView ? (
-            <button type="button" className="primary-button" onClick={exportConsolidatedReport}>Consolidated Report</button>
+            <button type="button" className="primary-button" onClick={openConsolidatedReport}>Consolidated Report</button>
           ) : null}
         </div>
         {isAdminView ? (
