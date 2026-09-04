@@ -1300,7 +1300,7 @@ function Header({ session, store, activePage, apiStatus }) {
       {session.role !== "employee" && (
         <div className="header-metrics">
           <Metric label="Employees" value={store.employees.length} />
-          {session.role === "admin" ? <Metric label="Today's Check-ins" value={`${Math.min(checkedInToday, activeEmployees.length)}/${activeEmployees.length} IN`} /> : null}
+          {session.role === "admin" ? <Metric className="checkin-metric" label="Today's Check-ins" value={`${Math.min(checkedInToday, activeEmployees.length)}/${activeEmployees.length} IN`} /> : null}
           <Metric label="Pending Approvals" value={pendingApprovals} />
           <Metric label="Approved Expenses" value={money(approvedExpenses)} />
         </div>
@@ -3252,8 +3252,8 @@ function Panel({ title, children, className = "" }) {
   );
 }
 
-function Metric({ label, value }) {
-  return <div className="metric"><span>{label}</span><strong>{value}</strong></div>;
+function Metric({ label, value, className = "" }) {
+  return <div className={`metric ${className}`.trim()}><span>{label}</span><strong>{value}</strong></div>;
 }
 
 const employeeColumns = ["id", "name", "email", "accessRole", "department", "role", "salary", "joinedAt", "birthday", "bloodGroup", "mobile", "alternativeNumber", "aadhaar", "pan", "uan", "experience", "qualification", "college", "address", "status"];

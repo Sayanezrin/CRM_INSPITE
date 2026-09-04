@@ -355,6 +355,17 @@ button:disabled {
   grid-template-columns: repeat(4, minmax(130px, 1fr));
 }
 
+.checkin-metric {
+  border-color: #a9dfc0;
+  border-left-color: #24a466;
+  background: #effaf3;
+}
+
+.checkin-metric span,
+.checkin-metric strong {
+  color: #137445;
+}
+
 .finance-export-actions {
   display: flex;
   flex-wrap: wrap;
