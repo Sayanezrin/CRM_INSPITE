@@ -145,6 +145,7 @@ function isAllowed(session, pathValue, method) {
   if (session.role === "hr") return !pathValue.startsWith("/api/candidates") || method !== "DELETE";
   if (session.role === "employee") {
     return (pathValue === "/api/portal" && (method === "GET" || method === "PUT"))
+      || (pathValue === "/api/payslips" && method === "GET")
       || (pathValue === "/api/portal/me" && method === "GET")
       || (pathValue === "/api/portal/attendance-record" && method === "POST")
       || pathValue.startsWith("/api/attendance")
@@ -203,10 +204,11 @@ async function getRecoveredPortalState() {
   const portal = normalizePortalState(await getPortalState());
   if (!models) return portal;
 
-  const [users, attendanceDocuments, billDocuments] = await Promise.all([
+  const [users, attendanceDocuments, billDocuments, payslipDocuments] = await Promise.all([
     retryMongoOperation(() => models.PortalUser.find({}).lean()),
     retryMongoOperation(() => models.Attendance.find({}).sort({ date: -1, updatedAt: -1, _id: -1 }).lean()),
-    models.Bill ? retryMongoOperation(() => models.Bill.find({}).sort({ invoiceDate: -1, updatedAt: -1, _id: -1 }).lean()) : []
+    models.Bill ? retryMongoOperation(() => models.Bill.find({}).sort({ invoiceDate: -1, updatedAt: -1, _id: -1 }).lean()) : [],
+    models.Payslip ? retryMongoOperation(() => models.Payslip.find({}).sort({ month: -1, updatedAt: -1, _id: -1 }).lean()) : []
   ]);
   const logins = mergePortalRecords(
     portal.logins || [],
@@ -223,7 +225,8 @@ async function getRecoveredPortalState() {
     attendanceDocuments.map(toPortalAttendanceRecord)
   );
   const bills = mergePortalRecords(portal.bills || [], billDocuments || []);
-  return normalizePortalState({ ...portal, logins, attendance, bills });
+  const payslips = mergePortalRecords(portal.payslips || [], payslipDocuments || []);
+  return normalizePortalState({ ...portal, logins, attendance, bills, payslips });
 }
 
 function normalizePortalState(payload) {
@@ -548,6 +551,99 @@ async function syncPortalBills(models, payload) {
   }
 }
 
+function toPayslipDocument(record, employees = [], now = new Date()) {
+  const employee = employees.find((item) => String(item.id) === String(record.employeeId));
+  return {
+    ...record,
+    id: String(record.id),
+    employeeId: String(record.employeeId || ""),
+    employeeEmail: String(record.employeeEmail || employee?.email || "").trim().toLowerCase(),
+    employeeName: String(record.employeeName || employee?.name || ""),
+    employeeRole: String(record.employeeRole || employee?.role || "Employee"),
+    department: String(record.department || employee?.department || "General"),
+    month: String(record.month || ""),
+    basic: Number(record.basic || 0),
+    allowances: Number(record.allowances || 0),
+    allowanceNotes: String(record.allowanceNotes || ""),
+    deductions: Number(record.deductions || 0),
+    deductionNotes: String(record.deductionNotes || ""),
+    notes: String(record.notes || ""),
+    createdBy: String(record.createdBy || ""),
+    updatedAt: record.updatedAt || now
+  };
+}
+
+async function syncPortalPayslips(models, payload) {
+  if (!models?.Payslip || !Array.isArray(payload.payslips)) return;
+  const now = new Date();
+  for (const record of payload.payslips) {
+    if (!record?.id || !record?.employeeId || !record?.month) continue;
+    const savedRecord = toPayslipDocument(record, payload.employees || [], now);
+    await models.Payslip.updateOne(
+      { id: savedRecord.id },
+      { $set: savedRecord, $setOnInsert: { createdAt: record.createdAt || now } },
+      { upsert: true }
+    );
+  }
+}
+
+async function savePayslipRecord(record, session) {
+  const models = await getModels();
+  if (!models?.Payslip) {
+    const error = new Error("MongoDB storage is required for payslips.");
+    error.status = 503;
+    throw error;
+  }
+  const portal = await getRecoveredPortalState();
+  const employee = (portal.employees || []).find((item) => String(item.id) === String(record.employeeId));
+  if (!employee) {
+    const error = new Error("The selected employee was not found.");
+    error.status = 400;
+    throw error;
+  }
+  const now = new Date();
+  const savedRecord = toPayslipDocument({
+    ...record,
+    id: String(record.id || crypto.randomUUID()),
+    employeeName: employee.name,
+    employeeRole: employee.role,
+    employeeEmail: employee.email,
+    department: employee.department,
+    createdBy: session?.name || record.createdBy || "Admin"
+  }, portal.employees, now);
+  if (!/^\d{4}-\d{2}$/.test(savedRecord.month)) {
+    const error = new Error("A valid salary month is required.");
+    error.status = 400;
+    throw error;
+  }
+  await models.Payslip.updateOne(
+    { id: savedRecord.id },
+    { $set: savedRecord, $setOnInsert: { createdAt: now } },
+    { upsert: true }
+  );
+  const nextPortal = {
+    ...portal,
+    payslips: [savedRecord, ...(portal.payslips || []).filter((item) => String(item.id) !== savedRecord.id)]
+  };
+  await writePortalDocument(models, nextPortal);
+  return savedRecord;
+}
+
+async function deletePayslipRecord(id) {
+  const models = await getModels();
+  if (!models?.Payslip) {
+    const error = new Error("MongoDB storage is required for payslips.");
+    error.status = 503;
+    throw error;
+  }
+  await models.Payslip.deleteOne({ id: String(id) });
+  const portal = await getRecoveredPortalState();
+  await writePortalDocument(models, {
+    ...portal,
+    payslips: (portal.payslips || []).filter((item) => String(item.id) !== String(id))
+  });
+}
+
 async function savePortalState(payload) {
   const models = await getModelsOrNull();
   if (models) {
@@ -561,6 +657,7 @@ async function savePortalState(payload) {
     await syncPortalUsers(models, nextPayload);
     await syncPortalAttendance(models, nextPayload);
     await syncPortalBills(models, nextPayload);
+    await syncPortalPayslips(models, nextPayload);
     await writePortalDocument(models, nextPayload);
     return { saved: true, storage: "mongodb", savedAt: new Date().toISOString() };
   }
@@ -958,9 +1055,59 @@ app.post("/api/auth/google", async (req, res) => {
   }
 });
 
-app.get("/api/portal", async (_req, res, next) => {
+app.get("/api/portal", async (req, res, next) => {
   try {
-    res.json(await getPortalState());
+    const portal = await getPortalState();
+    if (req.session?.role !== "employee") return res.json(portal);
+    const employee = findEmployeeProfileForEmail(portal, req.session.email);
+    res.json({
+      ...portal,
+      payslips: (portal.payslips || []).filter((item) => (
+        String(item.employeeId) === String(employee?.id)
+        || String(item.employeeEmail || "").trim().toLowerCase() === req.session.email
+      ))
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/payslips", async (req, res, next) => {
+  try {
+    const models = await getModels();
+    if (!models?.Payslip) return res.status(503).json({ error: "MongoDB storage is required for payslips." });
+    const query = req.session.role === "employee" ? { employeeEmail: req.session.email } : {};
+    res.json(await models.Payslip.find(query).sort({ month: -1, updatedAt: -1 }).lean());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/payslips", async (req, res, next) => {
+  try {
+    if (req.session.role !== "admin" && req.session.role !== "hr") return res.status(403).json({ error: "Only Admin or Accountant can issue payslips." });
+    res.status(201).json(await savePayslipRecord(req.body, req.session));
+  } catch (error) {
+    if (error?.code === 11000) return res.status(409).json({ error: "A payslip already exists for this employee and month." });
+    next(error);
+  }
+});
+
+app.put("/api/payslips/:id", async (req, res, next) => {
+  try {
+    if (req.session.role !== "admin" && req.session.role !== "hr") return res.status(403).json({ error: "Only Admin or Accountant can update payslips." });
+    res.json(await savePayslipRecord({ ...req.body, id: req.params.id }, req.session));
+  } catch (error) {
+    if (error?.code === 11000) return res.status(409).json({ error: "A payslip already exists for this employee and month." });
+    next(error);
+  }
+});
+
+app.delete("/api/payslips/:id", async (req, res, next) => {
+  try {
+    if (req.session.role !== "admin" && req.session.role !== "hr") return res.status(403).json({ error: "Only Admin or Accountant can delete payslips." });
+    await deletePayslipRecord(req.params.id);
+    res.status(204).end();
   } catch (error) {
     next(error);
   }
@@ -1010,7 +1157,10 @@ app.get("/api/public/attendance", async (_req, res, next) => {
 
 app.put("/api/portal", async (req, res, next) => {
   try {
-    res.json(await savePortalState(req.body));
+    const payload = req.session.role === "employee"
+      ? { ...req.body, payslips: (await getPortalState()).payslips || [] }
+      : req.body;
+    res.json(await savePortalState(payload));
   } catch (error) {
     next(error);
   }

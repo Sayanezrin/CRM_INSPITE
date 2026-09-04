@@ -163,6 +163,26 @@ function createModels(connection) {
     updatedAt: Date
   }, { collection: "Bills", versionKey: false, strict: false });
 
+  const payslipSchema = new mongoose.Schema({
+    id: { type: String, index: true, unique: true },
+    employeeId: { type: String, index: true },
+    employeeEmail: { type: String, index: true },
+    employeeName: String,
+    employeeRole: String,
+    department: String,
+    month: { type: String, index: true },
+    basic: Number,
+    allowances: Number,
+    allowanceNotes: String,
+    deductions: Number,
+    deductionNotes: String,
+    notes: String,
+    createdBy: String,
+    createdAt: Date,
+    updatedAt: Date
+  }, { collection: "payslips", versionKey: false, strict: false });
+  payslipSchema.index({ employeeId: 1, month: 1 }, { unique: true });
+
   return {
     PortalState: connection.model("PortalState", portalStateSchema),
     PortalUser: connection.model("PortalUser", portalUserSchema),
@@ -170,7 +190,8 @@ function createModels(connection) {
     Task: connection.model("Task", taskSchema),
     Candidate: connection.model("Candidate", candidateSchema),
     Attendance: connection.model("Attendance", attendanceSchema),
-    Bill: connection.model("Bill", billSchema)
+    Bill: connection.model("Bill", billSchema),
+    Payslip: connection.model("Payslip", payslipSchema)
   };
 }
 
