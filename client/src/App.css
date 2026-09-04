@@ -1742,7 +1742,7 @@ button:disabled {
 
 .approval-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   min-height: 72px;
@@ -1752,7 +1752,15 @@ button:disabled {
 }
 
 .approval-row.expense-approval {
-  grid-template-columns: minmax(0, 1fr) auto auto auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.approval-actions {
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  white-space: nowrap;
 }
 
 .approval-row div {
@@ -2180,6 +2188,22 @@ button:disabled {
   .data-head,
   .data-row {
     min-width: 720px;
+  }
+}
+
+.approval-actions .status {
+  width: auto;
+}
+
+@media (max-width: 760px) {
+  .approval-row .approval-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .approval-row .approval-actions button {
+    width: auto;
   }
 }
 
