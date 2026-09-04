@@ -1751,6 +1751,10 @@ button:disabled {
   padding: 12px;
 }
 
+.approval-row.expense-approval {
+  grid-template-columns: minmax(0, 1fr) auto auto auto auto;
+}
+
 .approval-row div {
   min-width: 0;
   display: grid;

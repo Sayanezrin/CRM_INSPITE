@@ -4389,11 +4389,21 @@ function ApprovalPanel({ title, items, kind, commit, className = "" }) {
     toast(`${kind === "leaves" ? "Leave" : "Expense"} ${status.toLowerCase()}.`);
   };
 
+  const removeExpense = (id) => {
+    if (!window.confirm("Delete this expense? This cannot be undone.")) return;
+    commit((current) => ({
+      ...current,
+      expenses: (current.expenses || []).filter((item) => item.id !== id),
+      ledger: (current.ledger || []).filter((item) => item.sourceExpenseId !== id)
+    }));
+    toast("Expense deleted.");
+  };
+
   return (
     <Panel title={title} className={className}>
       <div className="approval-list">
         {items.length ? items.map((item) => (
-          <article className="approval-row" key={item.id}>
+          <article className={`approval-row ${kind === "expenses" ? "expense-approval" : ""}`} key={item.id}>
             <div>
               <strong>{item.employeeName}</strong>
               <span>{item.type || item.category} {item.duration ? `- ${item.duration}` : ""} {item.amount ? `- ${money(item.amount)}` : ""}</span>
@@ -4402,6 +4412,7 @@ function ApprovalPanel({ title, items, kind, commit, className = "" }) {
             <Status status={item.status} />
             <button onClick={() => updateStatus(item.id, "Approved")} disabled={item.status === "Approved"}>Approve</button>
             <button onClick={() => updateStatus(item.id, "Rejected")} disabled={item.status === "Rejected"}>Reject</button>
+            {kind === "expenses" ? <button className="icon-action danger" type="button" aria-label={`Delete expense for ${item.employeeName}`} title="Delete expense" onClick={() => removeExpense(item.id)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v5" /><path d="M14 11v5" /></svg></button> : null}
           </article>
         )) : <p className="empty-note">No records yet.</p>}
       </div>
