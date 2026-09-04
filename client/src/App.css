@@ -2179,6 +2179,13 @@ button:disabled {
   }
 }
 
+.payslip-form .primary-button {
+  width: fit-content;
+  min-width: 150px;
+  min-height: 42px;
+  justify-self: start;
+}
+
 @media print {
   body {
     background: #fff;
