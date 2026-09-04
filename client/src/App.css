@@ -2183,8 +2183,10 @@ button:disabled {
   width: fit-content;
   min-width: 112px;
   min-height: 32px;
+  height: 32px;
   padding: 0 10px;
   justify-self: start;
+  align-self: end;
 }
 
 @media print {
