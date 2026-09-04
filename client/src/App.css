@@ -518,6 +518,33 @@ button:disabled {
   gap: 10px;
 }
 
+.payslip-form .metric {
+  align-self: end;
+  min-height: 74px;
+}
+
+.payslip-records .data-head,
+.payslip-records .data-row {
+  grid-template-columns: minmax(180px, 1.3fr) minmax(130px, .9fr) minmax(130px, .9fr) minmax(120px, .8fr) minmax(330px, 1.8fr);
+  min-width: 1020px;
+}
+
+.payslip-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+}
+
+.payslip-actions .secondary-button,
+.payslip-actions .table-action {
+  min-height: 32px;
+  padding: 0 9px;
+  font-size: 12px;
+}
+
+.danger-text { color: var(--red); }
+
 .cashbook-summary,
 .cashbook-filters,
 .cashbook-totals {

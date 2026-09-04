@@ -30,7 +30,8 @@ const emptyPortalState = {
   attendance: [],
   bills: [],
   cashbook: [],
-  tasks: []
+  tasks: [],
+  payslips: []
 };
 
 const employee = {
@@ -233,7 +234,8 @@ function normalizePortalState(payload) {
     attendance: payload?.attendance || [],
     bills: payload?.bills || [],
     cashbook: payload?.cashbook || [],
-    tasks: payload?.tasks || []
+    tasks: payload?.tasks || [],
+    payslips: payload?.payslips || []
   };
   return ensureEmployeeProfilesForLogins(normalized);
 }
@@ -334,6 +336,7 @@ function mergePortalState(currentState, incomingState) {
     bills: nextState.bills || [],
     cashbook: nextState.cashbook || [],
     tasks: nextState.tasks || [],
+    payslips: nextState.payslips || [],
     attendance: mergeAttendanceRecords(currentState.attendance || [], nextState.attendance || [])
   };
 }

@@ -28,7 +28,8 @@ const seedState = {
   attendance: [],
   bills: [],
   cashbook: [],
-  tasks: []
+  tasks: [],
+  payslips: []
 };
 
 function today() {
@@ -1238,6 +1239,7 @@ const navItems = [
   { id: "finance", label: "Finance", roles: ["admin", "hr"] },
   { id: "billing", label: "Billing", roles: ["admin", "hr"] },
   { id: "tasks", label: "Tasks & Reports" },
+  { id: "payslips", label: "Payslips" },
   { id: "leave", label: "Leave" },
   { id: "expenses", label: "Expenses" },
   { id: "attendance", label: "Attendance" }
@@ -1310,6 +1312,7 @@ function AdminPage({ activePage, store, commit, commitAttendance, deleteAttendan
   if (activePage === "billing") return <BillingPage store={store} commit={commit} createdBy="Admin" />;
   if (activePage === "cashbook") return <CashbookPage store={store} commit={commit} createdBy="Admin" />;
   if (activePage === "tasks") return <TaskManagerPage store={store} commit={commit} session={session} />;
+  if (activePage === "payslips") return <PayslipManagerPage store={store} commit={commit} createdBy="Admin" />;
   if (activePage === "leave") return <DashboardGrid><ApprovalPanel title="Leave Applications" items={store.leaves} kind="leaves" commit={commit} /><LeaveTable leaves={store.leaves} /></DashboardGrid>;
   if (activePage === "expenses") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} /><ApprovalPanel title="Expense Approvals" items={store.expenses} kind="expenses" commit={commit} className="full-row-panel" /><ExpenseTable expenses={store.expenses} className="full-row-panel" /></DashboardGrid>;
   if (activePage === "attendance") return <AttendancePage store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} session={session} />;
@@ -1325,6 +1328,7 @@ function HrPage({ activePage, store, commit, commitAttendance, deleteAttendance,
   if (activePage === "billing") return <BillingPage store={store} commit={commit} createdBy="Accountant" />;
   if (activePage === "cashbook") return <CashbookPage store={store} commit={commit} createdBy="Accountant" />;
   if (activePage === "tasks") return <TaskManagerPage store={store} commit={commit} session={session} />;
+  if (activePage === "payslips") return <PayslipManagerPage store={store} commit={commit} createdBy="Accountant" />;
   return <DashboardGrid><FinancePanel store={store} canExport className="full-row-panel" /><ApprovalPanel title="Expense Approval Queue" items={store.expenses} kind="expenses" commit={commit} className="full-row-panel" /></DashboardGrid>;
 }
 
@@ -1337,6 +1341,7 @@ function EmployeePage({ activePage, store, commit, commitAttendance, session, on
   if (activePage === "expenses") return <DashboardGrid><ExpenseFormPanel store={store} commit={commit} currentEmployee={currentEmployee} /><ExpenseTable expenses={store.expenses.filter((item) => item.employeeId === currentEmployee.id)} /></DashboardGrid>;
   if (activePage === "attendance") return <DashboardGrid><EmployeeAttendancePanel store={store} commit={commitAttendance} currentEmployee={currentEmployee} /></DashboardGrid>;
   if (activePage === "tasks") return <TaskManagerPage store={store} commit={commit} session={session} currentEmployee={currentEmployee} />;
+  if (activePage === "payslips") return <EmployeePayslipsPage store={store} employee={currentEmployee} />;
   return <EmployeeHome store={store} commit={commit} commitAttendance={commitAttendance} currentEmployee={currentEmployee} />;
 }
 
@@ -1817,6 +1822,76 @@ function EmployeeHome({ store, commit, commitAttendance, currentEmployee }) {
       <ExpenseFormPanel store={store} commit={commit} currentEmployee={currentEmployee} />
     </DashboardGrid>
   );
+}
+
+function payslipMonthLabel(month) {
+  return month ? new Date(`${month}-01T12:00:00`).toLocaleDateString("en-IN", { month: "long", year: "numeric" }) : "";
+}
+
+function payslipNetAmount(payslip) {
+  return Number(payslip.basic || 0) + Number(payslip.allowances || 0) - Number(payslip.deductions || 0);
+}
+
+function payslipHtml(payslip) {
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Payslip ${escapeHtml(payslipMonthLabel(payslip.month))}</title><style>body{font-family:Arial,sans-serif;background:#f4f7fb;color:#17243a;padding:32px}.payslip{max-width:760px;margin:auto;background:#fff;border:1px solid #d7e0eb;padding:38px}.top{display:flex;justify-content:space-between;border-bottom:3px solid #1769e0;padding-bottom:20px}.muted{color:#667387}h1,h2,p{margin:0}.employee{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:28px 0}.box{background:#f7faff;padding:14px;border-radius:6px}.amounts{width:100%;border-collapse:collapse}.amounts td{padding:13px;border-bottom:1px solid #dfe7f1}.amounts td:last-child{text-align:right;font-weight:700}.net{background:#eaf7ef;color:#11613c;font-size:19px;font-weight:700}@media print{body{background:#fff;padding:0}.payslip{border:0}}</style></head><body><main class="payslip"><div class="top"><div><h1>Inspite Technologies</h1><p class="muted">Monthly Salary Payslip</p></div><div><strong>${escapeHtml(payslipMonthLabel(payslip.month))}</strong><p class="muted">Generated ${escapeHtml(billDate(payslip.updatedAt || today()))}</p></div></div><section class="employee"><div class="box"><p class="muted">Employee</p><h2>${escapeHtml(payslip.employeeName)}</h2><p>${escapeHtml(payslip.employeeRole || "Employee")}</p></div><div class="box"><p class="muted">Employee ID</p><h2>${escapeHtml(payslip.employeeId)}</h2><p>${escapeHtml(payslip.department || "General")}</p></div></section><table class="amounts"><tbody><tr><td>Basic salary</td><td>${moneyInr(payslip.basic)}</td></tr><tr><td>Allowances</td><td>${moneyInr(payslip.allowances)}</td></tr><tr><td>Deductions</td><td>− ${moneyInr(payslip.deductions)}</td></tr><tr class="net"><td>Net pay</td><td>${moneyInr(payslipNetAmount(payslip))}</td></tr></tbody></table>${payslip.notes ? `<p class="muted" style="margin-top:24px">Notes: ${escapeHtml(payslip.notes)}</p>` : ""}</main></body></html>`;
+}
+
+function openPayslipForPrint(payslip) {
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) { toast("Allow pop-ups to print or save this payslip.", "error"); return; }
+  printWindow.document.write(payslipHtml(payslip));
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.print();
+}
+
+function downloadPayslip(payslip) {
+  const blob = new Blob([payslipHtml(payslip)], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `payslip-${payslip.employeeName}-${payslip.month}.html`.replace(/[^a-z0-9._-]+/gi, "-");
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function EmployeePayslipsPage({ store, employee }) {
+  const slips = (store.payslips || []).filter((item) => item.employeeId === employee.id).sort((a, b) => String(b.month).localeCompare(String(a.month)));
+  return <DashboardGrid><Panel title="My Payslips" className="full-row-panel"><p className="change-note">Your payslips are issued by Admin or the Accountant. They are view-only.</p><PayslipTable payslips={slips} /></Panel></DashboardGrid>;
+}
+
+function PayslipManagerPage({ store, commit, createdBy }) {
+  const employees = (store.employees || []).filter((employee) => employee.accessRole === "employee");
+  const [form, setForm] = useState(() => ({ employeeId: employees[0]?.id || "", month: today().slice(0, 7), basic: employees[0]?.salary || "", allowances: "", deductions: "", notes: "" }));
+  const [editingId, setEditingId] = useState(null);
+  const slips = [...(store.payslips || [])].sort((a, b) => String(b.month).localeCompare(String(a.month)) || String(a.employeeName).localeCompare(String(b.employeeName)));
+  const selectedEmployee = employees.find((employee) => employee.id === form.employeeId);
+  const update = (field, value) => setForm((current) => ({ ...current, [field]: value }));
+  const chooseEmployee = (employeeId) => {
+    const employee = employees.find((item) => item.id === employeeId);
+    setForm((current) => ({ ...current, employeeId, basic: employee?.salary || current.basic }));
+  };
+  const save = (event) => {
+    event.preventDefault();
+    if (!selectedEmployee || !form.month) { toast("Select an employee and salary month.", "error"); return; }
+    const duplicate = slips.find((item) => item.employeeId === selectedEmployee.id && item.month === form.month && item.id !== editingId);
+    if (duplicate) { toast("A payslip already exists for this employee and month. Edit it instead.", "error"); return; }
+    const payslip = { id: editingId || uid("PAY"), employeeId: selectedEmployee.id, employeeName: selectedEmployee.name, employeeRole: selectedEmployee.role, department: selectedEmployee.department, month: form.month, basic: Number(form.basic || 0), allowances: Number(form.allowances || 0), deductions: Number(form.deductions || 0), notes: String(form.notes || "").trim(), createdBy, updatedAt: new Date().toISOString() };
+    commit((current) => ({ ...current, payslips: [payslip, ...(current.payslips || []).filter((item) => item.id !== payslip.id)] }));
+    setEditingId(null);
+    setForm({ employeeId: employees[0]?.id || "", month: today().slice(0, 7), basic: employees[0]?.salary || "", allowances: "", deductions: "", notes: "" });
+    toast("Payslip saved.");
+  };
+  const edit = (payslip) => { setEditingId(payslip.id); setForm({ employeeId: payslip.employeeId, month: payslip.month, basic: payslip.basic, allowances: payslip.allowances, deductions: payslip.deductions, notes: payslip.notes || "" }); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const remove = (id) => { if (!window.confirm("Delete this payslip?")) return; commit((current) => ({ ...current, payslips: (current.payslips || []).filter((item) => item.id !== id) })); toast("Payslip deleted."); };
+  return <DashboardGrid><Panel title={editingId ? "Update Payslip" : "Generate Monthly Payslip"} className="full-row-panel"><form className="form-grid payslip-form" onSubmit={save}><label>Employee<select value={form.employeeId} onChange={(event) => chooseEmployee(event.target.value)}><option value="">Select employee</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}</select></label><label>Salary Month<input type="month" value={form.month} onChange={(event) => update("month", event.target.value)} /></label><label>Basic Salary<input type="number" min="0" value={form.basic} onChange={(event) => update("basic", event.target.value)} /></label><label>Allowances<input type="number" min="0" value={form.allowances} onChange={(event) => update("allowances", event.target.value)} /></label><label>Deductions<input type="number" min="0" value={form.deductions} onChange={(event) => update("deductions", event.target.value)} /></label><Metric label="Net Pay" value={moneyInr(Number(form.basic || 0) + Number(form.allowances || 0) - Number(form.deductions || 0))} /><label className="wide-input">Notes<textarea value={form.notes} onChange={(event) => update("notes", event.target.value)} placeholder="Optional payroll note" /></label><button type="submit" className="primary-button">{editingId ? "Update Payslip" : "Save Payslip"}</button>{editingId ? <button type="button" className="secondary-button" onClick={() => { setEditingId(null); setForm({ employeeId: employees[0]?.id || "", month: today().slice(0, 7), basic: employees[0]?.salary || "", allowances: "", deductions: "", notes: "" }); }}>Cancel</button> : null}</form></Panel><Panel title="Issued Payslips" className="full-row-panel"><PayslipTable payslips={slips} canManage onEdit={edit} onDelete={remove} /></Panel></DashboardGrid>;
+}
+
+function PayslipTable({ payslips, canManage = false, onEdit, onDelete }) {
+  if (!payslips.length) return <p className="empty-note">No payslips have been issued yet.</p>;
+  return <div className="data-table payslip-records"><div className="data-head"><span>Employee</span><span>Month</span><span>Net Pay</span><span>Issued By</span><span>Actions</span></div>{payslips.map((payslip) => <div className="data-row" key={payslip.id}><span>{payslip.employeeName}</span><span>{payslipMonthLabel(payslip.month)}</span><span>{moneyInr(payslipNetAmount(payslip))}</span><span>{payslip.createdBy || "--"}</span><span className="payslip-actions"><button type="button" className="secondary-button" onClick={() => openPayslipForPrint(payslip)}>View / PDF</button><button type="button" className="secondary-button" onClick={() => downloadPayslip(payslip)}>Download</button>{canManage ? <><button type="button" className="table-action" onClick={() => onEdit(payslip)}>Edit</button><button type="button" className="table-action danger-text" onClick={() => onDelete(payslip.id)}>Delete</button></> : null}</span></div>)}</div>;
 }
 
 const defaultBillItems = [
