@@ -351,6 +351,10 @@ button:disabled {
   align-items: stretch;
 }
 
+.header-metrics {
+  grid-template-columns: repeat(4, minmax(130px, 1fr));
+}
+
 .finance-export-actions {
   display: flex;
   flex-wrap: wrap;

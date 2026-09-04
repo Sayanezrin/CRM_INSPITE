@@ -1273,8 +1273,17 @@ function Sidebar({ session, activePage, onPageChange, onLogout }) {
 }
 
 function Header({ session, store, activePage, apiStatus }) {
+  const [attendanceDate, setAttendanceDate] = useState(today());
+  useEffect(() => {
+    const timer = window.setInterval(() => setAttendanceDate(today()), 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
   const approvedExpenses = store.expenses.filter((item) => item.status === "Approved").reduce((sum, item) => sum + Number(item.amount), 0);
   const pendingApprovals = store.expenses.filter((item) => item.status === "Pending").length + store.leaves.filter((item) => item.status === "Pending").length;
+  const activeEmployees = (store.employees || []).filter((employee) => normalizeRole(employee.accessRole) === "employee" && employee.status !== "Inactive");
+  const checkedInToday = new Set((store.attendance || []).filter((record) => (
+    record.date === attendanceDate && (record.checkIn || record.status === "Checked In" || record.status === "Checked Out")
+  )).map((record) => String(record.employeeId || record.userEmail || record.employeeName || "")).filter(Boolean)).size;
   const pageTitle = getNavItemsForRole(session.role).find((item) => item.id === activePage)?.label || "Home";
   const statusLabel = apiStatus === "connected"
     ? "Backend storage connected"
@@ -1291,6 +1300,7 @@ function Header({ session, store, activePage, apiStatus }) {
       {session.role !== "employee" && (
         <div className="header-metrics">
           <Metric label="Employees" value={store.employees.length} />
+          {session.role === "admin" ? <Metric label="Today's Check-ins" value={`${Math.min(checkedInToday, activeEmployees.length)}/${activeEmployees.length} IN`} /> : null}
           <Metric label="Pending Approvals" value={pendingApprovals} />
           <Metric label="Approved Expenses" value={money(approvedExpenses)} />
         </div>
