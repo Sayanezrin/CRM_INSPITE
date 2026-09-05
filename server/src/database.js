@@ -183,6 +183,19 @@ function createModels(connection) {
   }, { collection: "payslips", versionKey: false, strict: false });
   payslipSchema.index({ employeeId: 1, month: 1 }, { unique: true });
 
+  const pushSubscriptionSchema = new mongoose.Schema({
+    endpoint: { type: String, unique: true, index: true },
+    keys: {
+      p256dh: String,
+      auth: String
+    },
+    email: { type: String, index: true },
+    role: String,
+    userAgent: String,
+    createdAt: Date,
+    updatedAt: Date
+  }, { collection: "pushSubscriptions", versionKey: false, strict: false });
+
   return {
     PortalState: connection.model("PortalState", portalStateSchema),
     PortalUser: connection.model("PortalUser", portalUserSchema),
@@ -191,7 +204,8 @@ function createModels(connection) {
     Candidate: connection.model("Candidate", candidateSchema),
     Attendance: connection.model("Attendance", attendanceSchema),
     Bill: connection.model("Bill", billSchema),
-    Payslip: connection.model("Payslip", payslipSchema)
+    Payslip: connection.model("Payslip", payslipSchema),
+    PushSubscription: connection.model("PushSubscription", pushSubscriptionSchema)
   };
 }
 

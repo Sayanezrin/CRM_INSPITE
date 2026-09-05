@@ -11,10 +11,9 @@ createRoot(document.getElementById("root")).render(
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.getRegistrations()
-      .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+    navigator.serviceWorker.register("/sw.js")
       .catch(() => {
-        // The app remains usable when service workers are unavailable.
+        // The app remains usable when background notifications are unavailable.
       });
   });
 }

@@ -300,6 +300,31 @@ async function apiJson(path, options = {}) {
   return response.json();
 }
 
+function urlBase64ToUint8Array(value) {
+  const padded = `${value}${"=".repeat((4 - (value.length % 4)) % 4)}`.replace(/-/g, "+").replace(/_/g, "/");
+  const raw = window.atob(padded);
+  return Uint8Array.from(raw, (character) => character.charCodeAt(0));
+}
+
+async function enableAdminPhoneAlerts() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+    throw new Error("This browser does not support phone notifications.");
+  }
+  const permission = await Notification.requestPermission();
+  if (permission !== "granted") throw new Error("Allow notifications in your browser settings to receive leave alerts.");
+  const { publicKey } = await apiJson("/api/notifications/vapid-public-key");
+  const registration = await navigator.serviceWorker.register("/sw.js");
+  await navigator.serviceWorker.ready;
+  const subscription = await registration.pushManager.getSubscription() || await registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(publicKey)
+  });
+  await apiJson("/api/notifications/subscriptions", {
+    method: "POST",
+    body: JSON.stringify({ subscription: subscription.toJSON() })
+  });
+}
+
 async function savePortalState(value) {
   const normalizedValue = ensureEmployeeProfilesForLogins(value);
   writeState(normalizedValue);
@@ -1296,6 +1321,7 @@ function Header({ session, store, activePage, apiStatus }) {
         <p>{session.email}</p>
         <h1>{session.name} - {pageTitle}</h1>
         <span className={`api-status ${apiStatus}`}>{statusLabel}</span>
+        {session.role === "admin" ? <button type="button" className="secondary-button header-alert-button" onClick={() => enableAdminPhoneAlerts().then(() => toast("Phone leave alerts enabled.")).catch((error) => toast(error.message || "Could not enable phone alerts.", "error"))}>Enable Phone Alerts</button> : null}
       </div>
       {session.role !== "employee" && (
         <div className="header-metrics">

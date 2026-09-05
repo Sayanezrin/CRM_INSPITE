@@ -317,6 +317,10 @@ button:disabled {
   letter-spacing: 0;
 }
 
+.header-alert-button {
+  margin-top: 10px;
+}
+
 .api-status {
   display: inline-flex;
   align-items: center;

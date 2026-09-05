@@ -1,16 +1,22 @@
 self.addEventListener("install", (event) => {
   self.skipWaiting();
-  event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
-  );
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
-      .then(() => self.registration.unregister())
-      .then(() => self.clients.matchAll())
-      .then((clients) => Promise.all(clients.map((client) => client.navigate(client.url))))
-  );
+  event.waitUntil(self.clients.claim());
+});
+
+self.addEventListener("push", (event) => {
+  const data = event.data?.json?.() || {};
+  event.waitUntil(self.registration.showNotification(data.title || "Inspite People", {
+    body: data.body || "You have a new notification.",
+    icon: "/app-icon.svg",
+    badge: "/app-icon.svg",
+    data: { url: data.url || "/" }
+  }));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(self.clients.openWindow(event.notification.data?.url || "/"));
 });

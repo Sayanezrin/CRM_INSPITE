@@ -7,6 +7,7 @@ import cors from "cors";
 import express from "express";
 import { OAuth2Client } from "google-auth-library";
 import helmet from "helmet";
+import webpush from "web-push";
 import { getModels, getModelsOrNull, getMongoConnectionStatus, isMongoConfigured } from "./database.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -73,6 +74,9 @@ const lists = {
 const tokenSecret = process.env.APP_AUTH_SECRET || "local-development-token-secret-change-before-production";
 const googleClientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || "";
 const googleClient = new OAuth2Client(googleClientId || undefined);
+const vapidPublicKey = String(process.env.WEB_PUSH_VAPID_PUBLIC_KEY || "").trim();
+const vapidPrivateKey = String(process.env.WEB_PUSH_VAPID_PRIVATE_KEY || "").trim();
+const vapidSubject = String(process.env.WEB_PUSH_VAPID_SUBJECT || "mailto:admin@inspite.local").trim();
 function normalizeRole(role) {
   const value = String(role || "").trim().toLowerCase();
   if (value === "accountant" || value === "hr / accountant") return "hr";
@@ -587,6 +591,39 @@ async function syncPortalPayslips(models, payload) {
   }
 }
 
+function isWebPushConfigured() {
+  return Boolean(vapidPublicKey && vapidPrivateKey && vapidSubject);
+}
+
+async function notifyNewLeaveApplications(models, previousPortal, nextPortal) {
+  if (!models?.PushSubscription || !isWebPushConfigured()) return;
+  const existingIds = new Set((previousPortal?.leaves || []).map((leave) => String(leave.id)));
+  const newLeaves = (nextPortal?.leaves || []).filter((leave) => (
+    leave?.id && !existingIds.has(String(leave.id)) && leave.status === "Pending"
+  ));
+  if (!newLeaves.length) return;
+
+  webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
+  const subscriptions = await models.PushSubscription.find({ role: "admin" }).lean();
+  await Promise.all(subscriptions.map(async (subscription) => {
+    const leave = newLeaves[0];
+    const payload = JSON.stringify({
+      title: "New leave application",
+      body: `${leave.employeeName || "An employee"} applied for ${leave.type || "leave"}.`,
+      url: "/"
+    });
+    try {
+      await webpush.sendNotification({ endpoint: subscription.endpoint, keys: subscription.keys }, payload);
+    } catch (error) {
+      if (error.statusCode === 404 || error.statusCode === 410) {
+        await models.PushSubscription.deleteOne({ endpoint: subscription.endpoint });
+      } else {
+        console.error("Leave push notification failed:", error.message);
+      }
+    }
+  }));
+}
+
 async function savePayslipRecord(record, session) {
   const models = await getModels();
   if (!models?.Payslip) {
@@ -659,6 +696,7 @@ async function savePortalState(payload) {
     await syncPortalBills(models, nextPayload);
     await syncPortalPayslips(models, nextPayload);
     await writePortalDocument(models, nextPayload);
+    await notifyNewLeaveApplications(models, currentPortal, nextPayload);
     return { saved: true, storage: "mongodb", savedAt: new Date().toISOString() };
   }
   await writePortalFile(payload);
@@ -906,6 +944,34 @@ app.get("/api/health/mongodb", async (_req, res) => {
     checkedAt: new Date().toISOString(),
     storage: models ? "mongodb" : getMongoConnectionStatus() === "connecting" ? "connecting" : "fallback"
   });
+});
+
+app.get("/api/notifications/vapid-public-key", (req, res) => {
+  if (req.session?.role !== "admin") return res.status(403).json({ error: "Only Admin can enable phone notifications." });
+  if (!isWebPushConfigured()) return res.status(503).json({ error: "Phone notifications have not been configured on the server yet." });
+  res.json({ publicKey: vapidPublicKey });
+});
+
+app.post("/api/notifications/subscriptions", async (req, res, next) => {
+  try {
+    if (req.session?.role !== "admin") return res.status(403).json({ error: "Only Admin can enable phone notifications." });
+    const subscription = req.body?.subscription;
+    const endpoint = String(subscription?.endpoint || "").trim();
+    const p256dh = String(subscription?.keys?.p256dh || "").trim();
+    const auth = String(subscription?.keys?.auth || "").trim();
+    if (!endpoint || !p256dh || !auth) return res.status(400).json({ error: "A valid phone notification subscription is required." });
+    const models = await getModels();
+    if (!models?.PushSubscription) return res.status(503).json({ error: "MongoDB storage is required for phone notifications." });
+    const now = new Date();
+    await models.PushSubscription.updateOne(
+      { endpoint },
+      { $set: { endpoint, keys: { p256dh, auth }, email: req.session.email, role: "admin", userAgent: String(req.get("user-agent") || ""), updatedAt: now }, $setOnInsert: { createdAt: now } },
+      { upsert: true }
+    );
+    res.status(201).json({ saved: true });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.get("/api/ping", async (_req, res) => {
