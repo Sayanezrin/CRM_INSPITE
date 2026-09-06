@@ -150,6 +150,8 @@ function validateBearerToken(header) {
 
 function isAllowed(session, pathValue, method) {
   if (session.role === "admin") return true;
+  if (pathValue === "/api/notifications/vapid-public-key" && method === "GET") return true;
+  if (pathValue === "/api/notifications/subscriptions" && method === "POST") return true;
   if (session.role === "hr") return !pathValue.startsWith("/api/candidates") || method !== "DELETE";
   if (session.role === "employee") {
     return (pathValue === "/api/portal" && (method === "GET" || method === "PUT"))
