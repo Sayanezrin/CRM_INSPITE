@@ -77,6 +77,10 @@ const googleClient = new OAuth2Client(googleClientId || undefined);
 const vapidPublicKey = String(process.env.WEB_PUSH_VAPID_PUBLIC_KEY || "").trim();
 const vapidPrivateKey = String(process.env.WEB_PUSH_VAPID_PRIVATE_KEY || "").trim();
 const vapidSubject = String(process.env.WEB_PUSH_VAPID_SUBJECT || "mailto:admin@inspite.local").trim();
+const leaveAlertRecipientEmails = String(process.env.WEB_PUSH_ALERT_RECIPIENTS || "")
+  .split(",")
+  .map((email) => email.trim().toLowerCase())
+  .filter(Boolean);
 function normalizeRole(role) {
   const value = String(role || "").trim().toLowerCase();
   if (value === "accountant" || value === "hr / accountant") return "hr";
@@ -595,6 +599,10 @@ function isWebPushConfigured() {
   return Boolean(vapidPublicKey && vapidPrivateKey && vapidSubject);
 }
 
+function canReceiveLeaveAlerts(session) {
+  return Boolean(session?.email && leaveAlertRecipientEmails.includes(String(session.email).trim().toLowerCase()));
+}
+
 async function notifyNewLeaveApplications(models, previousPortal, nextPortal) {
   if (!models?.PushSubscription || !isWebPushConfigured()) return;
   const existingIds = new Set((previousPortal?.leaves || []).map((leave) => String(leave.id)));
@@ -604,7 +612,7 @@ async function notifyNewLeaveApplications(models, previousPortal, nextPortal) {
   if (!newLeaves.length) return;
 
   webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
-  const subscriptions = await models.PushSubscription.find({ role: "admin" }).lean();
+  const subscriptions = await models.PushSubscription.find({ email: { $in: leaveAlertRecipientEmails } }).lean();
   await Promise.all(subscriptions.map(async (subscription) => {
     const leave = newLeaves[0];
     const payload = JSON.stringify({
@@ -947,14 +955,14 @@ app.get("/api/health/mongodb", async (_req, res) => {
 });
 
 app.get("/api/notifications/vapid-public-key", (req, res) => {
-  if (req.session?.role !== "admin") return res.status(403).json({ error: "Only Admin can enable phone notifications." });
+  if (!canReceiveLeaveAlerts(req.session)) return res.status(403).json({ error: "This login is not an approved leave-alert recipient." });
   if (!isWebPushConfigured()) return res.status(503).json({ error: "Phone notifications have not been configured on the server yet." });
   res.json({ publicKey: vapidPublicKey });
 });
 
 app.post("/api/notifications/subscriptions", async (req, res, next) => {
   try {
-    if (req.session?.role !== "admin") return res.status(403).json({ error: "Only Admin can enable phone notifications." });
+    if (!canReceiveLeaveAlerts(req.session)) return res.status(403).json({ error: "This login is not an approved leave-alert recipient." });
     const subscription = req.body?.subscription;
     const endpoint = String(subscription?.endpoint || "").trim();
     const p256dh = String(subscription?.keys?.p256dh || "").trim();
@@ -965,7 +973,7 @@ app.post("/api/notifications/subscriptions", async (req, res, next) => {
     const now = new Date();
     await models.PushSubscription.updateOne(
       { endpoint },
-      { $set: { endpoint, keys: { p256dh, auth }, email: req.session.email, role: "admin", userAgent: String(req.get("user-agent") || ""), updatedAt: now }, $setOnInsert: { createdAt: now } },
+      { $set: { endpoint, keys: { p256dh, auth }, email: req.session.email, role: "leave-alert-recipient", userAgent: String(req.get("user-agent") || ""), updatedAt: now }, $setOnInsert: { createdAt: now } },
       { upsert: true }
     );
     res.status(201).json({ saved: true });

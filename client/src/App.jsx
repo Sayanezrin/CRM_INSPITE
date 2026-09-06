@@ -1321,7 +1321,7 @@ function Header({ session, store, activePage, apiStatus }) {
         <p>{session.email}</p>
         <h1>{session.name} - {pageTitle}</h1>
         <span className={`api-status ${apiStatus}`}>{statusLabel}</span>
-        {session.role === "admin" ? <button type="button" className="secondary-button header-alert-button" onClick={() => enableAdminPhoneAlerts().then(() => toast("Phone leave alerts enabled.")).catch((error) => toast(error.message || "Could not enable phone alerts.", "error"))}>Enable Phone Alerts</button> : null}
+        <button type="button" className="secondary-button header-alert-button" onClick={() => enableAdminPhoneAlerts().then(() => toast("Phone leave alerts enabled.")).catch((error) => toast(error.message || "Could not enable phone alerts.", "error"))}>Enable Phone Alerts</button>
       </div>
       {session.role !== "employee" && (
         <div className="header-metrics">
