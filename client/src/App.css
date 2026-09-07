@@ -1354,6 +1354,13 @@ button:disabled {
   border-radius: 7px;
 }
 
+.leave-records .icon-action {
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+}
+
 .employee-records {
   max-height: 420px;
   overflow: auto;

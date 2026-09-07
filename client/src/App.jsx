@@ -1373,7 +1373,7 @@ function EmployeePage({ activePage, store, commit, commitAttendance, session, on
   if (!currentEmployee && activePage === "tasks") return <TaskManagerPage store={store} commit={commit} session={session} currentEmployee={taskEmployeeFromSession(session)} />;
   if (!currentEmployee) return <EmployeeProfileMissing session={session} onEmployeeProfileLoaded={onEmployeeProfileLoaded} />;
   if (activePage === "employees") return <DashboardGrid><EmployeeProfilePanel employee={currentEmployee} /></DashboardGrid>;
-  if (activePage === "leave") return <DashboardGrid><LeaveFormPanel store={store} commit={commit} currentEmployee={currentEmployee} /><LeaveTable leaves={store.leaves.filter((item) => item.employeeId === currentEmployee.id)} /></DashboardGrid>;
+  if (activePage === "leave") return <DashboardGrid><LeaveFormPanel store={store} commit={commit} currentEmployee={currentEmployee} /><LeaveTable leaves={store.leaves.filter((item) => item.employeeId === currentEmployee.id)} onDelete={(leaveId) => { if (!window.confirm("Withdraw this pending leave request?")) return; commit((current) => ({ ...current, leaves: (current.leaves || []).filter((item) => item.id !== leaveId) })); toast("Leave request withdrawn."); }} /></DashboardGrid>;
   if (activePage === "expenses") return <DashboardGrid><ExpenseFormPanel store={store} commit={commit} currentEmployee={currentEmployee} /><ExpenseTable expenses={store.expenses.filter((item) => item.employeeId === currentEmployee.id)} /></DashboardGrid>;
   if (activePage === "attendance") return <DashboardGrid><EmployeeAttendancePanel store={store} commit={commitAttendance} currentEmployee={currentEmployee} /></DashboardGrid>;
   if (activePage === "tasks") return <TaskManagerPage store={store} commit={commit} session={session} currentEmployee={currentEmployee} />;
@@ -3583,10 +3583,12 @@ function LedgerTable({ store, className = "" }) {
   );
 }
 
-function LeaveTable({ leaves, title = "Leave Records" }) {
+function LeaveTable({ leaves, title = "Leave Records", onDelete }) {
+  const columns = ["id", "employeeName", "type", "duration", "from", "to", "reason", "status"];
+  if (onDelete) columns.push({ key: "action", label: "Action", render: (leave) => leave.status === "Pending" ? <button className="icon-action danger" type="button" aria-label="Withdraw leave request" title="Withdraw leave request" onClick={() => onDelete(leave.id)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v5" /><path d="M14 11v5" /></svg></button> : "--" });
   return (
     <Panel title={title}>
-      <DataTable rows={leaves} columns={["id", "employeeName", "type", "duration", "from", "to", "reason", "status"]} />
+      <DataTable rows={leaves} columns={columns} className={onDelete ? "leave-records" : ""} />
     </Panel>
   );
 }
@@ -4472,7 +4474,8 @@ function DataTable({ rows, columns, className = "" }) {
           {resolvedColumns.map((column) => {
             const key = columnKey(column);
             const value = row[key];
-            return <span key={key}>{isCurrencyColumn(column) ? (value === "" || value === null || value === undefined ? "--" : money(value)) : value || "--"}</span>;
+            const rendered = typeof column === "object" && typeof column.render === "function" ? column.render(row) : null;
+            return <span key={key}>{rendered ?? (isCurrencyColumn(column) ? (value === "" || value === null || value === undefined ? "--" : money(value)) : value || "--")}</span>;
           })}
         </div>
       ))}
