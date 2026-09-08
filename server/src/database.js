@@ -108,11 +108,16 @@ function createModels(connection) {
   }, { collection: "timeLogs", versionKey: false, strict: false });
 
   const taskSchema = new mongoose.Schema({
-    id: { type: Number, index: true },
+    id: { type: mongoose.Schema.Types.Mixed, index: true },
+    employeeId: mongoose.Schema.Types.Mixed,
+    employeeName: String,
+    employeeEmail: { type: String, index: true },
     title: String,
-    description: String,
+    details: String,
     status: String,
-    createdAt: Date
+    date: String,
+    createdAt: Date,
+    updatedAt: Date
   }, { collection: "tasks", versionKey: false, strict: false });
 
   const candidateSchema = new mongoose.Schema({

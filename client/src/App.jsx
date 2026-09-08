@@ -1620,7 +1620,7 @@ function TaskManagerPage({ store, commit, session, currentEmployee }) {
     [status.id]: visibleTasks.filter((task) => task.status === status.id).length
   }), {});
 
-  const addTask = (event) => {
+  const addTask = async (event) => {
     event.preventDefault();
     if (!employee) {
       toast("Employee profile is required before adding tasks.", "error");
@@ -1643,28 +1643,46 @@ function TaskManagerPage({ store, commit, session, currentEmployee }) {
       createdAt: now,
       updatedAt: now
     };
-    commit((current) => ({ ...current, tasks: [nextTask, ...(current.tasks || [])] }));
-    setTaskDraft({ title: "", details: "", date: today() });
-    toast("Task added to To Do.");
+    try {
+      const savedTask = await apiJson("/api/tasks", { method: "POST", body: JSON.stringify(nextTask) });
+      commit((current) => ({ ...current, tasks: [savedTask, ...(current.tasks || []).filter((item) => item.id !== savedTask.id)] }));
+      setTaskDraft({ title: "", details: "", date: today() });
+      toast("Task added to To Do.");
+    } catch (error) {
+      toast(error.message || "Could not save this task.", "error");
+    }
   };
 
-  const updateTaskStatus = (taskId, status) => {
+  const updateTaskStatus = async (taskId, status) => {
     const task = scopedTasks.find((item) => item.id === taskId);
     if (!task || task.status === status) return;
     if (!isAdminView && task.employeeId !== employee?.id) return;
-    commit((current) => ({
-      ...current,
-      tasks: (current.tasks || []).map((item) => item.id === taskId ? { ...item, status, updatedAt: new Date().toISOString() } : item)
-    }));
-    toast(`Task moved to ${taskStatusLabel(status)}.`);
+    try {
+      const savedTask = await apiJson(`/api/tasks/${encodeURIComponent(taskId)}`, {
+        method: "PUT",
+        body: JSON.stringify({ ...task, status })
+      });
+      commit((current) => ({
+        ...current,
+        tasks: (current.tasks || []).map((item) => item.id === taskId ? savedTask : item)
+      }));
+      toast(`Task moved to ${taskStatusLabel(status)}.`);
+    } catch (error) {
+      toast(error.message || "Could not update this task.", "error");
+    }
   };
 
-  const deleteTask = (taskId) => {
+  const deleteTask = async (taskId) => {
     const task = scopedTasks.find((item) => item.id === taskId);
     if (!task || (!isAdminView && task.employeeId !== employee?.id)) return;
     if (!window.confirm("Delete this task?")) return;
-    commit((current) => ({ ...current, tasks: (current.tasks || []).filter((item) => item.id !== taskId) }));
-    toast("Task deleted.");
+    try {
+      await apiJson(`/api/tasks/${encodeURIComponent(taskId)}`, { method: "DELETE" });
+      commit((current) => ({ ...current, tasks: (current.tasks || []).filter((item) => item.id !== taskId) }));
+      toast("Task deleted.");
+    } catch (error) {
+      toast(error.message || "Could not delete this task.", "error");
+    }
   };
 
   const openConsolidatedReport = () => {
