@@ -1601,6 +1601,7 @@ function taskReportRows(tasks = [], employees = []) {
 
 function TaskManagerPage({ store, commit, session, currentEmployee }) {
   const isAdminView = session.role !== "employee";
+  const usesLocalFallback = session?.provider === "local-password" || String(session?.token || "").startsWith("local-");
   const employee = currentEmployee || getEmployeeForSession(store, session);
   const [taskDraft, setTaskDraft] = useState({ title: "", details: "", date: today() });
   const [dateFilter, setDateFilter] = useState("");
@@ -1643,6 +1644,12 @@ function TaskManagerPage({ store, commit, session, currentEmployee }) {
       createdAt: now,
       updatedAt: now
     };
+    if (usesLocalFallback) {
+      commit((current) => ({ ...current, tasks: [nextTask, ...(current.tasks || [])] }));
+      setTaskDraft({ title: "", details: "", date: today() });
+      toast("Task added to To Do.");
+      return;
+    }
     try {
       const savedTask = await apiJson("/api/tasks", { method: "POST", body: JSON.stringify(nextTask) });
       commit((current) => ({ ...current, tasks: [savedTask, ...(current.tasks || []).filter((item) => item.id !== savedTask.id)] }));
@@ -1657,6 +1664,14 @@ function TaskManagerPage({ store, commit, session, currentEmployee }) {
     const task = scopedTasks.find((item) => item.id === taskId);
     if (!task || task.status === status) return;
     if (!isAdminView && task.employeeId !== employee?.id) return;
+    if (usesLocalFallback) {
+      commit((current) => ({
+        ...current,
+        tasks: (current.tasks || []).map((item) => item.id === taskId ? { ...item, status, updatedAt: new Date().toISOString() } : item)
+      }));
+      toast(`Task moved to ${taskStatusLabel(status)}.`);
+      return;
+    }
     try {
       const savedTask = await apiJson(`/api/tasks/${encodeURIComponent(taskId)}`, {
         method: "PUT",
@@ -1676,6 +1691,11 @@ function TaskManagerPage({ store, commit, session, currentEmployee }) {
     const task = scopedTasks.find((item) => item.id === taskId);
     if (!task || (!isAdminView && task.employeeId !== employee?.id)) return;
     if (!window.confirm("Delete this task?")) return;
+    if (usesLocalFallback) {
+      commit((current) => ({ ...current, tasks: (current.tasks || []).filter((item) => item.id !== taskId) }));
+      toast("Task deleted.");
+      return;
+    }
     try {
       await apiJson(`/api/tasks/${encodeURIComponent(taskId)}`, { method: "DELETE" });
       commit((current) => ({ ...current, tasks: (current.tasks || []).filter((item) => item.id !== taskId) }));
