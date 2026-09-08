@@ -752,16 +752,12 @@ function isTaskOwnedBySession(task, session) {
 }
 
 async function saveTaskRecord(record, session) {
-  const models = await getModels();
-  if (!models?.Task) {
-    const error = new Error("MongoDB storage is required for task reports.");
-    error.status = 503;
-    throw error;
-  }
-
+  const models = await getModelsOrNull();
   const portal = await getRecoveredPortalState();
   const taskId = String(record.id || crypto.randomUUID());
-  const existing = await models.Task.findOne({ id: taskId }).lean();
+  const existing = models?.Task
+    ? await models.Task.findOne({ id: taskId }).lean()
+    : (portal.tasks || []).find((item) => String(item.id) === taskId);
   if (existing && session?.role === "employee" && !isTaskOwnedBySession(existing, session)) {
     const error = new Error("You can only update your own task reports.");
     error.status = 403;
@@ -771,7 +767,15 @@ async function saveTaskRecord(record, session) {
   const sessionEmployee = session?.role === "employee"
     ? findEmployeeProfileForEmail(portal, session.email)
     : null;
-  const selectedEmployee = sessionEmployee || (portal.employees || []).find((item) => String(item.id) === String(record.employeeId));
+  const portalEmployee = (portal.employees || []).find((item) => String(item.id) === String(record.employeeId));
+  const fallbackEmployee = !models && record?.employeeId
+    ? {
+      id: String(record.employeeId),
+      name: String(session?.role === "employee" ? session.name || record.employeeName : record.employeeName || "Employee"),
+      email: String(session?.role === "employee" ? session.email : record.employeeEmail || "").trim().toLowerCase()
+    }
+    : null;
+  const selectedEmployee = sessionEmployee || portalEmployee || fallbackEmployee;
   if (!selectedEmployee) {
     const error = new Error("The employee profile for this task was not found.");
     error.status = 400;
@@ -796,39 +800,46 @@ async function saveTaskRecord(record, session) {
   }
   if (!["todo", "progress", "done"].includes(savedRecord.status)) savedRecord.status = "todo";
 
-  await models.Task.updateOne(
-    { id: taskId },
-    { $set: savedRecord, $setOnInsert: { createdAt: savedRecord.createdAt } },
-    { upsert: true }
-  );
-  await writePortalDocument(models, {
+  const nextPortal = {
     ...portal,
     tasks: [savedRecord, ...(portal.tasks || []).filter((item) => String(item.id) !== taskId)]
-  });
+  };
+  if (models?.Task) {
+    await models.Task.updateOne(
+      { id: taskId },
+      { $set: savedRecord, $setOnInsert: { createdAt: savedRecord.createdAt } },
+      { upsert: true }
+    );
+    await writePortalDocument(models, nextPortal);
+  } else {
+    await writePortalFile(nextPortal);
+  }
   return savedRecord;
 }
 
 async function deleteTaskRecord(id, session) {
-  const models = await getModels();
-  if (!models?.Task) {
-    const error = new Error("MongoDB storage is required for task reports.");
-    error.status = 503;
-    throw error;
-  }
+  const models = await getModelsOrNull();
   const taskId = String(id);
-  const existing = await models.Task.findOne({ id: taskId }).lean();
+  const portal = await getRecoveredPortalState();
+  const existing = models?.Task
+    ? await models.Task.findOne({ id: taskId }).lean()
+    : (portal.tasks || []).find((item) => String(item.id) === taskId);
   if (!existing) return;
   if (session?.role === "employee" && !isTaskOwnedBySession(existing, session)) {
     const error = new Error("You can only delete your own task reports.");
     error.status = 403;
     throw error;
   }
-  await models.Task.deleteOne({ id: taskId });
-  const portal = await getRecoveredPortalState();
-  await writePortalDocument(models, {
+  const nextPortal = {
     ...portal,
     tasks: (portal.tasks || []).filter((item) => String(item.id) !== taskId)
-  });
+  };
+  if (models?.Task) {
+    await models.Task.deleteOne({ id: taskId });
+    await writePortalDocument(models, nextPortal);
+  } else {
+    await writePortalFile(nextPortal);
+  }
 }
 
 async function savePortalState(payload) {
@@ -1608,9 +1619,15 @@ app.post("/api/attendance/check-out", async (req, res, next) => {
 
 app.get("/api/tasks", async (req, res, next) => {
   try {
-    const { Task } = await getPeopleModels();
-    const query = req.session?.role === "employee" ? { employeeEmail: req.session.email } : {};
-    res.json(await Task.find(query).sort({ date: -1, updatedAt: -1, _id: -1 }).lean());
+    const models = await getModelsOrNull();
+    const employeeEmail = String(req.session?.email || "").trim().toLowerCase();
+    const records = models?.Task
+      ? await models.Task.find(req.session?.role === "employee" ? { employeeEmail } : {}).sort({ date: -1, updatedAt: -1, _id: -1 }).lean()
+      : (await getRecoveredPortalState()).tasks || [];
+    const visibleRecords = req.session?.role === "employee"
+      ? records.filter((task) => String(task.employeeEmail || "").trim().toLowerCase() === employeeEmail)
+      : records;
+    res.json(mergeTaskRecords([], visibleRecords));
   } catch (error) {
     next(error);
   }
