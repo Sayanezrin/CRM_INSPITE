@@ -283,6 +283,7 @@ function employeeIdForLogin(login) {
 }
 
 function employeeProfileFromLogin(login) {
+  if (!login) return null;
   const email = String(login.email || "").trim().toLowerCase();
   if (!email || normalizeRole(login.accessRole) !== "employee") return null;
   return {
