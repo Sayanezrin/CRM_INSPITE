@@ -1051,7 +1051,7 @@ function App() {
       <main className="portal-main">
         <Header session={session} store={store} activePage={activePage} apiStatus={apiStatus} />
         {session.role === "employee" && <InstallAppNotice installPrompt={installPrompt} onPromptUsed={() => setInstallPrompt(null)} />}
-        <RolePage session={session} activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} onEmployeeProfileLoaded={applyEmployeeProfilePayload} />
+        <RolePage session={session} activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} onEmployeeProfileLoaded={applyEmployeeProfilePayload} apiStatus={apiStatus} />
       </main>
       <ToastHost />
     </div>
@@ -1335,19 +1335,19 @@ function Header({ session, store, activePage, apiStatus }) {
   );
 }
 
-function RolePage({ session, activePage, store, commit, commitAttendance, deleteAttendance, onEmployeeProfileLoaded }) {
-  if (session.role === "admin") return <AdminPage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} session={session} />;
-  if (session.role === "hr") return <HrPage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} session={session} />;
-  return <EmployeePage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} session={session} onEmployeeProfileLoaded={onEmployeeProfileLoaded} />;
+function RolePage({ session, activePage, store, commit, commitAttendance, deleteAttendance, onEmployeeProfileLoaded, apiStatus }) {
+  if (session.role === "admin") return <AdminPage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} session={session} apiStatus={apiStatus} />;
+  if (session.role === "hr") return <HrPage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} session={session} apiStatus={apiStatus} />;
+  return <EmployeePage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} session={session} onEmployeeProfileLoaded={onEmployeeProfileLoaded} apiStatus={apiStatus} />;
 }
 
-function AdminPage({ activePage, store, commit, commitAttendance, deleteAttendance, session }) {
+function AdminPage({ activePage, store, commit, commitAttendance, deleteAttendance, session, apiStatus }) {
   if (activePage === "logins") return <DashboardGrid><AddLoginPanel commit={commit} /><LoginAccessTable logins={store.logins || []} commit={commit} className="full-row-panel" /></DashboardGrid>;
   if (activePage === "employees") return <DashboardGrid><AddEmployeePanel commit={commit} /><EmployeeTable employees={store.employees} commit={commit} canDelete className="full-row-panel" /></DashboardGrid>;
   if (activePage === "finance") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} createdBy="Admin" title="Add Debit Expense" /><FinancePanel store={store} commit={commit} canManage canExport className="full-row-panel" /></DashboardGrid>;
   if (activePage === "billing") return <BillingPage store={store} commit={commit} createdBy="Admin" />;
   if (activePage === "cashbook") return <CashbookPage store={store} commit={commit} createdBy="Admin" />;
-  if (activePage === "tasks") return <TaskManagerPage store={store} commit={commit} session={session} />;
+  if (activePage === "tasks") return <TaskManagerPage store={store} commit={commit} session={session} apiStatus={apiStatus} />;
   if (activePage === "payslips") return <PayslipManagerPage store={store} commit={commit} createdBy="Admin" />;
   if (activePage === "leave") return <DashboardGrid><ApprovalPanel title="Leave Applications" items={store.leaves} kind="leaves" commit={commit} /><LeaveTable leaves={store.leaves} /></DashboardGrid>;
   if (activePage === "expenses") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} /><ApprovalPanel title="Expense Approvals" items={store.expenses} kind="expenses" commit={commit} className="full-row-panel" /><ExpenseTable expenses={store.expenses} className="full-row-panel" /></DashboardGrid>;
@@ -1355,7 +1355,7 @@ function AdminPage({ activePage, store, commit, commitAttendance, deleteAttendan
   return <AdminHome store={store} commit={commit} />;
 }
 
-function HrPage({ activePage, store, commit, commitAttendance, deleteAttendance, session }) {
+function HrPage({ activePage, store, commit, commitAttendance, deleteAttendance, session, apiStatus }) {
   if (activePage === "employees") return <DashboardGrid><EmployeeTable employees={store.employees} /></DashboardGrid>;
   if (activePage === "leave") return <DashboardGrid><LeaveTable leaves={store.leaves} /></DashboardGrid>;
   if (activePage === "expenses") return <DashboardGrid><ApprovalPanel title="Expense Approval Queue" items={store.expenses} kind="expenses" commit={commit} /><ExpenseTable expenses={store.expenses} /></DashboardGrid>;
@@ -1363,20 +1363,20 @@ function HrPage({ activePage, store, commit, commitAttendance, deleteAttendance,
   if (activePage === "finance") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} createdBy="HR" title="Add Debit Expense" /><FinancePanel store={store} canExport className="full-row-panel" /></DashboardGrid>;
   if (activePage === "billing") return <BillingPage store={store} commit={commit} createdBy="Accountant" />;
   if (activePage === "cashbook") return <CashbookPage store={store} commit={commit} createdBy="Accountant" />;
-  if (activePage === "tasks") return <TaskManagerPage store={store} commit={commit} session={session} />;
+  if (activePage === "tasks") return <TaskManagerPage store={store} commit={commit} session={session} apiStatus={apiStatus} />;
   if (activePage === "payslips") return <PayslipManagerPage store={store} commit={commit} createdBy="Accountant" />;
   return <DashboardGrid><FinancePanel store={store} canExport className="full-row-panel" /><ApprovalPanel title="Expense Approval Queue" items={store.expenses} kind="expenses" commit={commit} className="full-row-panel" /></DashboardGrid>;
 }
 
-function EmployeePage({ activePage, store, commit, commitAttendance, session, onEmployeeProfileLoaded }) {
+function EmployeePage({ activePage, store, commit, commitAttendance, session, onEmployeeProfileLoaded, apiStatus }) {
   const currentEmployee = getEmployeeForSession(store, session);
-  if (!currentEmployee && activePage === "tasks") return <TaskManagerPage store={store} commit={commit} session={session} currentEmployee={taskEmployeeFromSession(session)} />;
+  if (!currentEmployee && activePage === "tasks") return <TaskManagerPage store={store} commit={commit} session={session} currentEmployee={taskEmployeeFromSession(session)} apiStatus={apiStatus} />;
   if (!currentEmployee) return <EmployeeProfileMissing session={session} onEmployeeProfileLoaded={onEmployeeProfileLoaded} />;
   if (activePage === "employees") return <DashboardGrid><EmployeeProfilePanel employee={currentEmployee} /></DashboardGrid>;
   if (activePage === "leave") return <DashboardGrid><LeaveFormPanel store={store} commit={commit} currentEmployee={currentEmployee} /><LeaveTable leaves={store.leaves.filter((item) => item.employeeId === currentEmployee.id)} onDelete={(leaveId) => { if (!window.confirm("Withdraw this pending leave request?")) return; commit((current) => ({ ...current, leaves: (current.leaves || []).filter((item) => item.id !== leaveId) })); toast("Leave request withdrawn."); }} /></DashboardGrid>;
   if (activePage === "expenses") return <DashboardGrid><ExpenseFormPanel store={store} commit={commit} currentEmployee={currentEmployee} /><ExpenseTable expenses={store.expenses.filter((item) => item.employeeId === currentEmployee.id)} /></DashboardGrid>;
   if (activePage === "attendance") return <DashboardGrid><EmployeeAttendancePanel store={store} commit={commitAttendance} currentEmployee={currentEmployee} /></DashboardGrid>;
-  if (activePage === "tasks") return <TaskManagerPage store={store} commit={commit} session={session} currentEmployee={currentEmployee} />;
+  if (activePage === "tasks") return <TaskManagerPage store={store} commit={commit} session={session} currentEmployee={currentEmployee} apiStatus={apiStatus} />;
   if (activePage === "payslips") return <EmployeePayslipsPage store={store} employee={currentEmployee} />;
   return <EmployeeHome store={store} commit={commit} commitAttendance={commitAttendance} currentEmployee={currentEmployee} />;
 }
@@ -1599,9 +1599,11 @@ function taskReportRows(tasks = [], employees = []) {
     }));
 }
 
-function TaskManagerPage({ store, commit, session, currentEmployee }) {
+function TaskManagerPage({ store, commit, session, currentEmployee, apiStatus }) {
   const isAdminView = session.role !== "employee";
-  const usesLocalFallback = session?.provider === "local-password" || String(session?.token || "").startsWith("local-");
+  const usesLocalFallback = apiStatus !== "connected"
+    || session?.provider === "local-password"
+    || String(session?.token || "").startsWith("local-");
   const employee = currentEmployee || getEmployeeForSession(store, session);
   const [taskDraft, setTaskDraft] = useState({ title: "", details: "", date: today() });
   const [dateFilter, setDateFilter] = useState("");
