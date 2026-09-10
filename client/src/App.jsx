@@ -785,10 +785,17 @@ function fileToDataUrl(file) {
   });
 }
 
+const supportedUploadAccept = "image/png,image/jpeg,image/jpg,application/pdf,.png,.jpg,.jpeg,.pdf";
+
+function isSupportedUploadFile(file) {
+  const extension = String(file?.name || "").trim().toLowerCase().split(".").pop();
+  return ["image/png", "image/jpeg", "image/jpg", "application/pdf"].includes(file?.type)
+    || ["png", "jpg", "jpeg", "pdf"].includes(extension);
+}
+
 async function readEmployeeDocument(file) {
   if (!file) return null;
-  const allowed = file.type.startsWith("image/") || file.type === "application/pdf";
-  if (!allowed) throw new Error("Upload an Aadhaar card image or PDF.");
+  if (!isSupportedUploadFile(file)) throw new Error("Upload a PNG, JPG, JPEG, or PDF Aadhaar document.");
   if (file.size > 2 * 1024 * 1024) throw new Error("Aadhaar card document must be 2 MB or smaller.");
   return { name: file.name, type: file.type, size: file.size, dataUrl: await fileToDataUrl(file) };
 }
@@ -2260,8 +2267,8 @@ function CashbookPage({ store, commit, createdBy }) {
   const selectAttachment = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith("image/") || file.size > 2 * 1024 * 1024) {
-      toast("Attach a PNG or JPG image no larger than 2 MB.", "error");
+    if (!isSupportedUploadFile(file) || file.size > 2 * 1024 * 1024) {
+      toast("Attach a PNG, JPG, JPEG, or PDF file no larger than 2 MB.", "error");
       event.target.value = "";
       return;
     }
@@ -2306,7 +2313,7 @@ function CashbookPage({ store, commit, createdBy }) {
             <label>Description<textarea placeholder="Enter details (item name, bill no., quantity, etc.)" value={entry.description} onChange={(event) => setEntry((current) => ({ ...current, description: event.target.value }))} /></label>
             <fieldset><legend>Payment mode</legend><label><input type="radio" checked={entry.paymentMode === "Cash"} onChange={() => setEntry((current) => ({ ...current, paymentMode: "Cash" }))} /> Cash</label><label><input type="radio" checked={entry.paymentMode === "Online"} onChange={() => setEntry((current) => ({ ...current, paymentMode: "Online" }))} /> Online</label></fieldset>
             <label>Date<input type="date" value={entry.date} onChange={(event) => setEntry((current) => ({ ...current, date: event.target.value }))} /></label>
-            <label>Attach Bill <input type="file" accept="image/png,image/jpeg" onChange={selectAttachment} /></label>
+            <label>Attach Bill <input type="file" accept={supportedUploadAccept} onChange={selectAttachment} /></label>
             {entry.attachment ? <p className="attachment-note">Attached: {entry.attachment.name}</p> : null}
             <button className="primary-button" type="submit">Save {entry.type} Entry</button>
           </form>
@@ -2915,7 +2922,7 @@ function AddEmployeePanel({ commit }) {
         <input placeholder="Latest qualification" value={employee.qualification} onChange={(event) => setEmployee({ ...employee, qualification: event.target.value })} />
         <input placeholder="College" value={employee.college} onChange={(event) => setEmployee({ ...employee, college: event.target.value })} />
         <input className="wide-input" placeholder="Address" value={employee.address} onChange={(event) => setEmployee({ ...employee, address: event.target.value })} />
-        <label className="receipt-field wide-input">Aadhaar card document<input type="file" accept="image/*,.pdf,application/pdf" onChange={handleDocumentUpload} /><small>{employee.aadhaarDocument ? employee.aadhaarDocument.name : "PDF or image, max 2 MB"}</small></label>
+        <label className="receipt-field wide-input">Aadhaar card document<input type="file" accept={supportedUploadAccept} onChange={handleDocumentUpload} /><small>{employee.aadhaarDocument ? employee.aadhaarDocument.name : "PNG, JPG, JPEG, or PDF, max 2 MB"}</small></label>
         <button className="primary-button employee-submit-button">Add Employee</button>
       </form>
     </Panel>
@@ -2984,10 +2991,9 @@ function AdminExpenseFormPanel({ store, commit, createdBy = "Admin", title = "Ad
       setReceipt(null);
       return;
     }
-    const allowed = file.type.startsWith("image/") || file.type === "application/pdf";
-    if (!allowed) {
-      setReceiptError("Upload an image or PDF receipt.");
-      toast("Upload an image or PDF receipt.", "error");
+    if (!isSupportedUploadFile(file)) {
+      setReceiptError("Upload a PNG, JPG, JPEG, or PDF receipt.");
+      toast("Upload a PNG, JPG, JPEG, or PDF receipt.", "error");
       event.target.value = "";
       return;
     }
@@ -3077,8 +3083,8 @@ function AdminExpenseFormPanel({ store, commit, createdBy = "Admin", title = "Ad
         <input className="wide-input" placeholder="Narration" value={expense.narration} onChange={(event) => setExpense({ ...expense, narration: event.target.value })} />
         <label className="receipt-field">
           <span>Receipt</span>
-          <input type="file" accept="image/*,.pdf,application/pdf" onChange={handleReceiptUpload} />
-          <small>{receipt ? receipt.name : "Image or PDF, max 2 MB"}</small>
+          <input type="file" accept={supportedUploadAccept} onChange={handleReceiptUpload} />
+          <small>{receipt ? receipt.name : "PNG, JPG, JPEG, or PDF, max 2 MB"}</small>
           {receiptError && <em>{receiptError}</em>}
         </label>
         <button className="primary-button compact-submit-button">Add Expense</button>
@@ -3204,10 +3210,9 @@ function ExpenseFormPanel({ commit, currentEmployee }) {
     setReceipt(null);
     setReceiptError("");
     if (!file) return;
-    const allowed = file.type.startsWith("image/") || file.type === "application/pdf";
-    if (!allowed) {
-      setReceiptError("Upload an image or PDF receipt.");
-      toast("Upload an image or PDF receipt.", "error");
+    if (!isSupportedUploadFile(file)) {
+      setReceiptError("Upload a PNG, JPG, JPEG, or PDF receipt.");
+      toast("Upload a PNG, JPG, JPEG, or PDF receipt.", "error");
       event.target.value = "";
       return;
     }
@@ -3255,8 +3260,8 @@ function ExpenseFormPanel({ commit, currentEmployee }) {
         <input placeholder="Notes" value={expense.notes} onChange={(event) => setExpense({ ...expense, notes: event.target.value })} />
         <label className="receipt-field">
           <span>Receipt</span>
-          <input type="file" accept="image/*,.pdf,application/pdf" onChange={handleReceipt} />
-          <small>{receipt ? receipt.name : "Image or PDF, max 2 MB"}</small>
+          <input type="file" accept={supportedUploadAccept} onChange={handleReceipt} />
+          <small>{receipt ? receipt.name : "PNG, JPG, JPEG, or PDF, max 2 MB"}</small>
           {receiptError && <em>{receiptError}</em>}
         </label>
         <button className="primary-button expense-submit-button">Submit Expense</button>
@@ -3563,7 +3568,7 @@ function EmployeeEditModal({ employee, onClose, onSave }) {
           <label>College<input value={form.college} onChange={(event) => updateField("college", event.target.value)} /></label>
           <label>Status<select value={form.status} onChange={(event) => updateField("status", event.target.value)}><option value="Active">Active</option><option value="Inactive">Inactive</option></select></label>
           <label className="wide-input">Address<textarea value={form.address} onChange={(event) => updateField("address", event.target.value)} /></label>
-          <label className="receipt-field wide-input">Aadhaar card document<input type="file" accept="image/*,.pdf,application/pdf" onChange={handleDocumentUpload} /><small>{form.aadhaarDocument ? form.aadhaarDocument.name : "PDF or image, max 2 MB"}</small></label>
+          <label className="receipt-field wide-input">Aadhaar card document<input type="file" accept={supportedUploadAccept} onChange={handleDocumentUpload} /><small>{form.aadhaarDocument ? form.aadhaarDocument.name : "PNG, JPG, JPEG, or PDF, max 2 MB"}</small></label>
           <div className="modal-form-actions">
             <button type="button" className="secondary-button" onClick={onClose}>Cancel</button>
             <button type="submit" className="primary-button">Save Profile</button>
@@ -4084,10 +4089,9 @@ function CashbookEntryModal({ entryMode, selectedDate, onClose, onSave }) {
       setReceipt(null);
       return;
     }
-    const allowed = file.type.startsWith("image/") || file.type === "application/pdf";
-    if (!allowed) {
-      setReceiptError("Upload an image or PDF bill.");
-      toast("Upload an image or PDF bill.", "error");
+    if (!isSupportedUploadFile(file)) {
+      setReceiptError("Upload a PNG, JPG, JPEG, or PDF bill.");
+      toast("Upload a PNG, JPG, JPEG, or PDF bill.", "error");
       event.target.value = "";
       return;
     }
@@ -4147,7 +4151,7 @@ function CashbookEntryModal({ entryMode, selectedDate, onClose, onSave }) {
           <label>Date<input type="date" value={dateInputValue(form.date)} onChange={(event) => setForm({ ...form, date: event.target.value })} /></label>
           <label className="receipt-field cashbook-bill-field">
             <span>Attach Bill</span>
-            <input type="file" accept="image/*,.pdf,application/pdf" onChange={handleReceiptUpload} />
+            <input type="file" accept={supportedUploadAccept} onChange={handleReceiptUpload} />
             <small>{receipt ? receipt.name : "PNG, JPG, or PDF up to 2 MB"}</small>
             {receiptError && <em>{receiptError}</em>}
           </label>
