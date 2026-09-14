@@ -1350,7 +1350,7 @@ function RolePage({ session, activePage, store, commit, commitAttendance, delete
 
 function AdminPage({ activePage, store, commit, commitAttendance, deleteAttendance, session, apiStatus }) {
   if (activePage === "logins") return <DashboardGrid><AddLoginPanel commit={commit} /><LoginAccessTable logins={store.logins || []} commit={commit} className="full-row-panel" /></DashboardGrid>;
-  if (activePage === "employees") return <DashboardGrid><AddEmployeePanel commit={commit} /><EmployeeTable employees={store.employees} commit={commit} canDelete className="full-row-panel" /></DashboardGrid>;
+  if (activePage === "employees") return <DashboardGrid><AddEmployeePanel commit={commit} /><EmployeeTable employees={store.employees} commit={commit} canEdit canDelete className="full-row-panel" /></DashboardGrid>;
   if (activePage === "finance") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} createdBy="Admin" title="Add Debit Expense" /><FinancePanel store={store} commit={commit} canManage canExport className="full-row-panel" /></DashboardGrid>;
   if (activePage === "billing") return <BillingPage store={store} commit={commit} createdBy="Admin" />;
   if (activePage === "cashbook") return <CashbookPage store={store} commit={commit} createdBy="Admin" />;
@@ -1363,7 +1363,7 @@ function AdminPage({ activePage, store, commit, commitAttendance, deleteAttendan
 }
 
 function HrPage({ activePage, store, commit, commitAttendance, deleteAttendance, session, apiStatus }) {
-  if (activePage === "employees") return <DashboardGrid><EmployeeTable employees={store.employees} /></DashboardGrid>;
+  if (activePage === "employees") return <DashboardGrid><EmployeeTable employees={store.employees} commit={commit} canEdit /></DashboardGrid>;
   if (activePage === "leave") return <DashboardGrid><ApprovalPanel title="Leave Applications" items={store.leaves} kind="leaves" commit={commit} /><LeaveTable leaves={store.leaves} /></DashboardGrid>;
   if (activePage === "expenses") return <DashboardGrid><ApprovalPanel title="Expense Approval Queue" items={store.expenses} kind="expenses" commit={commit} /><ExpenseTable expenses={store.expenses} /></DashboardGrid>;
   if (activePage === "attendance") return <AttendancePage store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} session={session} />;
@@ -3289,7 +3289,7 @@ function Metric({ label, value, className = "" }) {
 
 const employeeColumns = ["id", "name", "email", "accessRole", "department", "role", "salary", "joinedAt", "birthday", "bloodGroup", "mobile", "alternativeNumber", "aadhaar", "pan", "uan", "experience", "qualification", "college", "address", "status"];
 
-function EmployeeTable({ employees, commit, canDelete = false, className = "" }) {
+function EmployeeTable({ employees, commit, canEdit = false, canDelete = false, className = "" }) {
   const [editingEmployee, setEditingEmployee] = useState(null);
 
   const deleteEmployee = (employeeId) => {
@@ -3309,7 +3309,7 @@ function EmployeeTable({ employees, commit, canDelete = false, className = "" })
   };
 
   const updateEmployee = (updatedEmployee) => {
-    if (!canDelete || !commit || !editingEmployee) return;
+    if (!canEdit || !commit || !editingEmployee) return;
     const previousId = editingEmployee.id;
     const nextId = updatedEmployee.id;
     const previousEmail = editingEmployee.email?.toLowerCase();
@@ -3367,7 +3367,7 @@ function EmployeeTable({ employees, commit, canDelete = false, className = "" })
     toast("Employee profile updated.");
   };
 
-  if (!canDelete) {
+  if (!canEdit) {
     return (
       <Panel title="Employee Directory" className={className}>
         <DataTable rows={employees} columns={employeeColumns} className="employee-records" />
@@ -3433,7 +3433,7 @@ function EmployeeTable({ employees, commit, canDelete = false, className = "" })
                     <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
                   </svg>
                 </button>
-                <button className="icon-action danger" type="button" aria-label={`Delete ${employee.name}`} title="Delete employee" onClick={() => deleteEmployee(employee.id)}>
+                {canDelete ? <button className="icon-action danger" type="button" aria-label={`Delete ${employee.name}`} title="Delete employee" onClick={() => deleteEmployee(employee.id)}>
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M4 7h16" />
                     <path d="M9 7V5h6v2" />
@@ -3441,7 +3441,7 @@ function EmployeeTable({ employees, commit, canDelete = false, className = "" })
                     <path d="M10 11v6" />
                     <path d="M14 11v6" />
                   </svg>
-                </button>
+                </button> : null}
               </span>
             </div>
           ))}
