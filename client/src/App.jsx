@@ -1364,7 +1364,7 @@ function AdminPage({ activePage, store, commit, commitAttendance, deleteAttendan
 
 function HrPage({ activePage, store, commit, commitAttendance, deleteAttendance, session, apiStatus }) {
   if (activePage === "employees") return <DashboardGrid><EmployeeTable employees={store.employees} /></DashboardGrid>;
-  if (activePage === "leave") return <DashboardGrid><LeaveTable leaves={store.leaves} /></DashboardGrid>;
+  if (activePage === "leave") return <DashboardGrid><ApprovalPanel title="Leave Applications" items={store.leaves} kind="leaves" commit={commit} /><LeaveTable leaves={store.leaves} /></DashboardGrid>;
   if (activePage === "expenses") return <DashboardGrid><ApprovalPanel title="Expense Approval Queue" items={store.expenses} kind="expenses" commit={commit} /><ExpenseTable expenses={store.expenses} /></DashboardGrid>;
   if (activePage === "attendance") return <AttendancePage store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} session={session} />;
   if (activePage === "finance") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} createdBy="HR" title="Add Debit Expense" /><FinancePanel store={store} canExport className="full-row-panel" /></DashboardGrid>;
