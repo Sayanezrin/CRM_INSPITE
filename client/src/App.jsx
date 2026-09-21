@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { jsPDF } from "jspdf";
 import inspiteLogoImage from "./assets/inspite-logo.png";
 
 const STORAGE_KEY = "inspite.people.role.portal";
@@ -359,6 +360,27 @@ function invoiceMoneyInr(value) {
 
 function moneyUsd(value) {
   return `$${Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function billPrimaryCurrency(bill) {
+  return bill?.currency === "INR" ? "INR" : "USD";
+}
+
+function billCurrencyAmounts(bill, usdValue, inrValue) {
+  const exchangeRate = Number(bill?.exchangeRate || 0);
+  const usd = Number(usdValue || 0);
+  const inr = Number(inrValue || 0) || (usd * exchangeRate);
+  return { usd, inr };
+}
+
+function billPrimaryMoney(bill, usdValue, inrValue) {
+  const amounts = billCurrencyAmounts(bill, usdValue, inrValue);
+  return billPrimaryCurrency(bill) === "INR" ? invoiceMoneyInr(amounts.inr) : moneyUsd(amounts.usd);
+}
+
+function billSecondaryMoney(bill, usdValue, inrValue) {
+  const amounts = billCurrencyAmounts(bill, usdValue, inrValue);
+  return billPrimaryCurrency(bill) === "INR" ? moneyUsd(amounts.usd) : invoiceMoneyInr(amounts.inr);
 }
 
 function billDate(value) {
@@ -1891,16 +1913,130 @@ function openPayslipPreview(payslip) {
   printWindow.focus();
 }
 
-function downloadPayslip(payslip) {
-  const blob = new Blob([payslipHtml(payslip)], { type: "text/html;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `payslip-${payslip.employeeName}-${payslip.month}.html`.replace(/[^a-z0-9._-]+/gi, "-");
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+async function downloadPayslip(payslip) {
+  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const margin = 16;
+  const contentWidth = pageWidth - (margin * 2);
+  const right = pageWidth - margin;
+  const drawLine = (y) => {
+    pdf.setDrawColor(219, 228, 239);
+    pdf.line(margin, y, right, y);
+  };
+  const drawRow = (label, value, y, { accent = false } = {}) => {
+    if (accent) {
+      pdf.setFillColor(234, 247, 239);
+      pdf.rect(margin, y - 7, contentWidth, 12, "F");
+      pdf.setTextColor(18, 100, 63);
+    } else {
+      pdf.setTextColor(27, 42, 64);
+    }
+    pdf.setFont("helvetica", accent ? "bold" : "normal");
+    pdf.setFontSize(accent ? 14 : 11);
+    pdf.text(label, margin + 5, y);
+    pdf.setFont("helvetica", "bold");
+    pdf.text(value, right - 5, y, { align: "right" });
+    if (!accent) drawLine(y + 5);
+    pdf.setTextColor(27, 42, 64);
+  };
+
+  pdf.setFillColor(255, 255, 255);
+  pdf.rect(0, 0, pageWidth, pdf.internal.pageSize.getHeight(), "F");
+  try {
+    const response = await fetch(inspiteLogoImage);
+    if (response.ok) {
+      const logoData = await fileToDataUrl(await response.blob());
+      pdf.addImage(logoData, "PNG", margin, 13, 48, 15);
+    }
+  } catch {
+    // The PDF remains valid even if the optional logo asset cannot be loaded.
+  }
+
+  pdf.setTextColor(19, 45, 82);
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(15);
+  pdf.text("Inspite Technologies", margin + 53, 19);
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(10);
+  pdf.setTextColor(104, 119, 137);
+  pdf.text("Salary Payroll", margin + 53, 25);
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(14);
+  pdf.setTextColor(19, 45, 82);
+  pdf.text(payslipMonthLabel(payslip.month), right, 19, { align: "right" });
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(9);
+  pdf.setTextColor(104, 119, 137);
+  pdf.text(`Issued ${billDate(payslip.updatedAt || today())}`, right, 25, { align: "right" });
+  pdf.setDrawColor(23, 105, 224);
+  pdf.setLineWidth(0.9);
+  pdf.line(margin, 34, right, 34);
+
+  const boxY = 43;
+  const boxGap = 7;
+  const boxWidth = (contentWidth - boxGap) / 2;
+  const drawInfoBox = (x, label, title, detail) => {
+    pdf.setFillColor(245, 248, 252);
+    pdf.setDrawColor(228, 235, 243);
+    pdf.roundedRect(x, boxY, boxWidth, 28, 2, 2, "FD");
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(8);
+    pdf.setTextColor(104, 119, 137);
+    pdf.text(label.toUpperCase(), x + 5, boxY + 7);
+    pdf.setFontSize(12);
+    pdf.setTextColor(23, 36, 58);
+    const titleLines = pdf.splitTextToSize(String(title || "--"), boxWidth - 10);
+    pdf.text(titleLines.slice(0, 2), x + 5, boxY + 14);
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(9);
+    pdf.setTextColor(72, 89, 109);
+    pdf.text(String(detail || "--"), x + 5, boxY + 24);
+  };
+  drawInfoBox(margin, "Employee", payslip.employeeName, payslip.employeeRole || "Employee");
+  drawInfoBox(margin + boxWidth + boxGap, "Employee Details", payslip.employeeId, payslip.department || "General");
+
+  let y = 83;
+  drawRow("Basic Salary", moneyInr(payslip.basic), y); y += 12;
+  drawRow("Allowances", moneyInr(payslip.allowances), y); y += 8;
+  if (payslip.allowanceNotes) {
+    pdf.setFont("helvetica", "italic");
+    pdf.setFontSize(8.5);
+    pdf.setTextColor(104, 119, 137);
+    pdf.text(pdf.splitTextToSize(payslip.allowanceNotes, contentWidth - 12), margin + 6, y);
+    y += 10;
+  }
+  drawRow("Deductions", `- ${moneyInr(payslip.deductions)}`, y); y += 8;
+  if (payslip.deductionNotes) {
+    pdf.setFont("helvetica", "italic");
+    pdf.setFontSize(8.5);
+    pdf.setTextColor(104, 119, 137);
+    pdf.text(pdf.splitTextToSize(payslip.deductionNotes, contentWidth - 12), margin + 6, y);
+    y += 10;
+  }
+  drawRow("Net Pay", moneyInr(payslipNetAmount(payslip)), y, { accent: true });
+  y += 18;
+  if (payslip.notes) {
+    const noteLines = pdf.splitTextToSize(payslip.notes, contentWidth - 14);
+    const noteHeight = Math.max(20, 11 + (noteLines.length * 5));
+    pdf.setFillColor(247, 250, 255);
+    pdf.setDrawColor(23, 105, 224);
+    pdf.rect(margin, y, 1.5, noteHeight, "F");
+    pdf.setFillColor(247, 250, 255);
+    pdf.rect(margin + 1.5, y, contentWidth - 1.5, noteHeight, "F");
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(9);
+    pdf.setTextColor(27, 42, 64);
+    pdf.text("Payroll Notes", margin + 6, y + 7);
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(8.5);
+    pdf.setTextColor(72, 89, 109);
+    pdf.text(noteLines, margin + 6, y + 13);
+  }
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(8);
+  pdf.setTextColor(120, 134, 154);
+  pdf.text("This is a system-generated payslip from Inspite Technologies.", pageWidth / 2, 280, { align: "center" });
+  pdf.save(`payslip-${payslip.employeeName}-${payslip.month}.pdf`.replace(/[^a-z0-9._-]+/gi, "-"));
 }
 
 function EmployeePayslipsPage({ store, employee }) {
@@ -1994,6 +2130,7 @@ function normalizeBillForSave(bill, createdBy) {
     bankDetails: String(bill.bankDetails || "").trim(),
     paymentTerms: String(bill.paymentTerms || "").trim(),
     notes: String(bill.notes || "").trim(),
+    currency: billPrimaryCurrency(bill),
     exchangeRate: Number(bill.exchangeRate || 0),
     items: (bill.items || []).map((item) => ({
       ...item,
@@ -2011,6 +2148,7 @@ function normalizeBillForSave(bill, createdBy) {
 function invoiceHtml(bill) {
   const totals = calculateBillTotals(bill);
   const exchangeRate = Number(bill.exchangeRate || 0);
+  const primaryCurrency = billPrimaryCurrency(bill);
   const itemRows = (bill.items || []).map((item, index) => {
     const usd = Number(item.amountUsd || 0);
     const inr = Number(item.amountInr || 0) || usd * exchangeRate;
@@ -2020,7 +2158,7 @@ function invoiceHtml(bill) {
         <strong>${escapeHtml(item.description)}</strong>
         <p>${escapeHtml(item.details)}</p>
       </td>
-      <td class="amount"><strong>${moneyUsd(usd)}</strong><span>${invoiceMoneyInr(inr)}</span></td>
+      <td class="amount"><strong>${billPrimaryMoney(bill, usd, inr)}</strong><span>${billSecondaryMoney(bill, usd, inr)}</span></td>
     </tr>
   `;
   }).join("");
@@ -2110,7 +2248,7 @@ function invoiceHtml(bill) {
         <h2>Supply Type</h2>
         <p><strong>${escapeHtml(bill.supplyType)}</strong></p>
         <p>Place of supply: ${escapeHtml(bill.placeOfSupply)}</p>
-        <p>Currency: ${escapeHtml(bill.currency || "USD")} (${invoiceMoneyInr(bill.exchangeRate)}/USD shown).</p>
+        <p>Primary currency: ${escapeHtml(primaryCurrency)} (${invoiceMoneyInr(bill.exchangeRate)}/USD shown).</p>
       </div>
     </section>
     <section class="amount-due">
@@ -2119,8 +2257,8 @@ function invoiceHtml(bill) {
         <span>For services delivered in ${escapeHtml(bill.serviceMonth || bill.billingPeriod)}</span>
       </div>
       <div class="amount-total">
-        <strong>${moneyUsd(totals.totalUsd)}</strong><em>${escapeHtml(bill.currency || "USD")}</em>
-        <span>${invoiceMoneyInr(totals.totalInr)} INR</span>
+        <strong>${billPrimaryMoney(bill, totals.totalUsd, totals.totalInr)}</strong><em>${escapeHtml(primaryCurrency)}</em>
+        <span>${billSecondaryMoney(bill, totals.totalUsd, totals.totalInr)}</span>
       </div>
     </section>
     <table>
@@ -2128,10 +2266,10 @@ function invoiceHtml(bill) {
       <tbody>${itemRows}</tbody>
     </table>
     <section class="totals">
-      <div><span>Subtotal</span><strong>${moneyUsd(totals.subtotalUsd)}</strong></div>
-      <div><span>IGST (export under LUT)</span><strong>${moneyUsd(totals.igstUsd)}</strong></div>
-      <div class="grand"><span>Total Due</span><strong>${moneyUsd(totals.totalUsd)}</strong></div>
-      <div><span>INR Equivalent</span><strong>${invoiceMoneyInr(totals.totalInr)}</strong></div>
+      <div><span>Subtotal</span><strong>${billPrimaryMoney(bill, totals.subtotalUsd, totals.subtotalInr)}</strong></div>
+      <div><span>IGST (export under LUT)</span><strong>${billPrimaryMoney(bill, totals.igstUsd, totals.igstUsd * exchangeRate)}</strong></div>
+      <div class="grand"><span>Total Due (${escapeHtml(primaryCurrency)})</span><strong>${billPrimaryMoney(bill, totals.totalUsd, totals.totalInr)}</strong></div>
+      <div><span>${primaryCurrency === "USD" ? "INR Equivalent" : "USD Equivalent"}</span><strong>${billSecondaryMoney(bill, totals.totalUsd, totals.totalInr)}</strong></div>
     </section>
     <footer>
       <div><h2>Payment Terms</h2><p>${escapeHtml(bill.paymentTerms)}</p></div>
@@ -2519,7 +2657,7 @@ function BillingPage({ store, commit, createdBy }) {
           <label className="wide-input">Client Address<textarea value={bill.clientAddress} onChange={(event) => updateBill("clientAddress", event.target.value)} /></label>
           <label>Supply Type<input value={bill.supplyType} onChange={(event) => updateBill("supplyType", event.target.value)} /></label>
           <label>Place of Supply<input value={bill.placeOfSupply} onChange={(event) => updateBill("placeOfSupply", event.target.value)} /></label>
-          <label>Currency<input value={bill.currency} onChange={(event) => updateBill("currency", event.target.value)} /></label>
+          <label>Primary Currency<select value={billPrimaryCurrency(bill)} onChange={(event) => updateBill("currency", event.target.value)}><option value="USD">USD — US Dollar</option><option value="INR">INR — Indian Rupee</option></select></label>
           <label>Status<select value={bill.status} onChange={(event) => updateBill("status", event.target.value)}><option>Draft</option><option>Sent</option><option>Paid</option></select></label>
           <label className="wide-input">Company Name<input value={bill.companyName} onChange={(event) => updateBill("companyName", event.target.value)} /></label>
           <label className="wide-input">Company Address<textarea value={bill.companyAddress} onChange={(event) => updateBill("companyAddress", event.target.value)} /></label>
@@ -2545,8 +2683,8 @@ function BillingPage({ store, commit, createdBy }) {
             ))}
           </div>
           <div className="billing-total-strip">
-            <Metric label="USD Total" value={moneyUsd(totals.totalUsd)} />
-            <Metric label="INR Total" value={moneyInr(totals.totalInr)} />
+            <Metric label={`${billPrimaryCurrency(bill)} Total`} value={billPrimaryMoney(bill, totals.totalUsd, totals.totalInr)} />
+            <Metric label={`${billPrimaryCurrency(bill) === "USD" ? "INR" : "USD"} Equivalent`} value={billSecondaryMoney(bill, totals.totalUsd, totals.totalInr)} />
             <Metric label="Items" value={bill.items.length} />
           </div>
           <button type="submit" className="primary-button">Save Bill</button>
@@ -2555,7 +2693,7 @@ function BillingPage({ store, commit, createdBy }) {
       </Panel>
       <Panel title="Saved Bills" className="full-row-panel">
         <div className="data-table billing-records">
-          <div className="data-head"><span>Invoice</span><span>Client</span><span>Date</span><span>Total USD</span><span>Status</span><span>Action</span></div>
+          <div className="data-head"><span>Invoice</span><span>Client</span><span>Date</span><span>Total</span><span>Status</span><span>Action</span></div>
           {bills.length ? bills.map((record) => {
             const recordTotals = calculateBillTotals(record);
             return (
@@ -2563,7 +2701,7 @@ function BillingPage({ store, commit, createdBy }) {
                 <span>{record.invoiceNo}</span>
                 <span>{record.clientName}</span>
                 <span>{record.invoiceDate}</span>
-                <span>{moneyUsd(recordTotals.totalUsd)}</span>
+                <span>{billPrimaryMoney(record, recordTotals.totalUsd, recordTotals.totalInr)}</span>
                 <span>{record.status}</span>
                 <span className="employee-action-buttons">
                   <button className="icon-action" type="button" title="Preview bill" aria-label={`Preview ${record.invoiceNo}`} onClick={() => setPreviewBill(record)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg></button>
