@@ -485,12 +485,12 @@ function findEmployeeProfileForEmail(state, email) {
 
 async function syncPortalUsers(models, payload) {
   if (!models) return;
-  const users = [...(payload.logins || []), ...(payload.employees || [])];
-  const activeEmails = [];
+  // Login access is deliberately separate from an employee profile. Only a
+  // record in `logins` should create or retain a credentialed portal user.
+  const users = payload.logins || [];
   for (const user of users) {
     const email = user.email?.trim().toLowerCase();
     if (!email) continue;
-    activeEmails.push(email);
     await models.PortalUser.updateOne(
       { email },
       {
@@ -744,6 +744,76 @@ async function deletePayslipRecord(id) {
     ...portal,
     payslips: (portal.payslips || []).filter((item) => String(item.id) !== String(id))
   });
+}
+
+async function deleteBillRecord(id) {
+  const models = await getModels();
+  if (!models?.Bill) {
+    const error = new Error("MongoDB storage is required to delete bills.");
+    error.status = 503;
+    throw error;
+  }
+  const billId = String(id);
+  await models.Bill.deleteOne({ id: billId });
+  const portal = await getRecoveredPortalState();
+  await writePortalDocument(models, {
+    ...portal,
+    bills: (portal.bills || []).filter((item) => String(item.id) !== billId)
+  });
+}
+
+async function deleteLoginRecord(id) {
+  const models = await getModels();
+  if (!models?.PortalUser) {
+    const error = new Error("MongoDB storage is required to delete login access.");
+    error.status = 503;
+    throw error;
+  }
+  const loginId = String(id);
+  const portal = await getRecoveredPortalState();
+  const login = (portal.logins || []).find((item) => String(item.id) === loginId);
+  if (!login) return;
+  const email = String(login.email || "").trim().toLowerCase();
+  if (email) await models.PortalUser.deleteOne({ email });
+  await writePortalDocument(models, {
+    ...portal,
+    logins: (portal.logins || []).filter((item) => String(item.id) !== loginId)
+  });
+}
+
+async function deleteEmployeeRecord(id) {
+  const models = await getModels();
+  if (!models) {
+    const error = new Error("MongoDB storage is required to delete employees.");
+    error.status = 503;
+    throw error;
+  }
+  const employeeId = String(id);
+  const portal = await getRecoveredPortalState();
+  const employee = (portal.employees || []).find((item) => String(item.id) === employeeId);
+  if (!employee) return;
+  const employeeEmail = String(employee.email || "").trim().toLowerCase();
+  const deletedExpenseIds = new Set((portal.expenses || [])
+    .filter((expense) => String(expense.employeeId) === employeeId)
+    .map((expense) => String(expense.id)));
+  const nextPortal = {
+    ...portal,
+    employees: (portal.employees || []).filter((item) => String(item.id) !== employeeId),
+    logins: (portal.logins || []).filter((item) => String(item.employeeId) !== employeeId && String(item.email || "").trim().toLowerCase() !== employeeEmail),
+    leaves: (portal.leaves || []).filter((item) => String(item.employeeId) !== employeeId),
+    expenses: (portal.expenses || []).filter((item) => String(item.employeeId) !== employeeId),
+    ledger: (portal.ledger || []).filter((item) => !deletedExpenseIds.has(String(item.sourceExpenseId))),
+    attendance: (portal.attendance || []).filter((item) => String(item.employeeId) !== employeeId),
+    tasks: (portal.tasks || []).filter((item) => String(item.employeeId) !== employeeId),
+    payslips: (portal.payslips || []).filter((item) => String(item.employeeId) !== employeeId)
+  };
+  await Promise.all([
+    models.PortalUser?.deleteOne({ email: employeeEmail }),
+    models.Attendance?.deleteMany({ employeeId }),
+    models.Task?.deleteMany({ employeeId }),
+    models.Payslip?.deleteMany({ employeeId })
+  ].filter(Boolean));
+  await writePortalDocument(models, nextPortal);
 }
 
 function isTaskOwnedBySession(task, session) {
@@ -1336,6 +1406,36 @@ app.delete("/api/payslips/:id", async (req, res, next) => {
   try {
     if (req.session.role !== "admin" && req.session.role !== "hr") return res.status(403).json({ error: "Only Admin or Accountant can delete payslips." });
     await deletePayslipRecord(req.params.id);
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete("/api/bills/:id", async (req, res, next) => {
+  try {
+    if (req.session.role !== "admin" && req.session.role !== "hr") return res.status(403).json({ error: "Only Admin or Accountant can delete bills." });
+    await deleteBillRecord(req.params.id);
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete("/api/logins/:id", async (req, res, next) => {
+  try {
+    if (req.session.role !== "admin") return res.status(403).json({ error: "Only Admin can delete login access." });
+    await deleteLoginRecord(req.params.id);
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete("/api/employees/:id", async (req, res, next) => {
+  try {
+    if (req.session.role !== "admin") return res.status(403).json({ error: "Only Admin can delete employees." });
+    await deleteEmployeeRecord(req.params.id);
     res.status(204).end();
   } catch (error) {
     next(error);

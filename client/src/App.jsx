@@ -1688,12 +1688,17 @@ function TaskManagerPage({ store, commit, session, currentEmployee }) {
     toast(`Task moved to ${taskStatusLabel(status)}.`);
   };
 
-  const deleteTask = (taskId) => {
+  const deleteTask = async (taskId) => {
     const task = scopedTasks.find((item) => item.id === taskId);
     if (!task || (!isAdminView && task.employeeId !== employee?.id)) return;
     if (!window.confirm("Delete this task?")) return;
-    commit((current) => ({ ...current, tasks: (current.tasks || []).filter((item) => item.id !== taskId) }));
-    toast("Task deleted.");
+    try {
+      await apiJson(`/api/tasks/${encodeURIComponent(taskId)}`, { method: "DELETE" });
+      commit((current) => ({ ...current, tasks: (current.tasks || []).filter((item) => item.id !== taskId) }));
+      toast("Task deleted.");
+    } catch (error) {
+      toast(error.message || "Task could not be deleted. Please try again.", "error");
+    }
   };
 
   const openConsolidatedReport = () => {
@@ -2634,13 +2639,18 @@ function BillingPage({ store, commit, createdBy }) {
     setBill({ ...blankBill(store), ...record, items: record.items?.length ? record.items : defaultBillItems });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
-  const deleteBill = (billId) => {
+  const deleteBill = async (billId) => {
     if (!window.confirm("Delete this bill from the billing records?")) return;
-    commit((current) => ({
-      ...current,
-      bills: (current.bills || []).filter((item) => item.id !== billId)
-    }));
-    toast("Bill deleted.");
+    try {
+      await apiJson(`/api/bills/${encodeURIComponent(billId)}`, { method: "DELETE" });
+      commit((current) => ({
+        ...current,
+        bills: (current.bills || []).filter((item) => item.id !== billId)
+      }));
+      toast("Bill deleted.");
+    } catch (error) {
+      toast(error.message || "Bill could not be deleted. Please try again.", "error");
+    }
   };
 
   return (
@@ -2804,12 +2814,18 @@ function LoginAccessTable({ logins, commit, className = "" }) {
     }
   };
 
-  const deleteLogin = (loginId) => {
-    commit((current) => ({
-      ...current,
-      logins: (current.logins || []).filter((login) => login.id !== loginId)
-    }));
-    toast("Login access deleted.");
+  const deleteLogin = async (login) => {
+    if (!window.confirm(`Delete login access for ${login.email}?`)) return;
+    try {
+      await apiJson(`/api/logins/${encodeURIComponent(login.id)}`, { method: "DELETE" });
+      commit((current) => ({
+        ...current,
+        logins: (current.logins || []).filter((item) => item.id !== login.id)
+      }));
+      toast("Login access deleted.");
+    } catch (error) {
+      toast(error.message || "Login access could not be deleted. Please try again.", "error");
+    }
   };
 
   const updateLogin = (updatedLogin) => {
@@ -2856,7 +2872,7 @@ function LoginAccessTable({ logins, commit, className = "" }) {
                   <path d="M9 16l2 2" />
                 </svg>
               </button>
-              <button className="icon-action danger" type="button" aria-label={`Delete ${login.email}`} title="Delete login" onClick={() => deleteLogin(login.id)}>
+              <button className="icon-action danger" type="button" aria-label={`Delete ${login.email}`} title="Delete login" onClick={() => deleteLogin(login)}>
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M4 7h16" />
                   <path d="M9 7V5h6v2" />
@@ -3430,20 +3446,27 @@ const employeeColumns = ["id", "name", "email", "accessRole", "department", "rol
 function EmployeeTable({ employees, commit, canEdit = false, canDelete = false, className = "" }) {
   const [editingEmployee, setEditingEmployee] = useState(null);
 
-  const deleteEmployee = (employeeId) => {
+  const deleteEmployee = async (employeeId) => {
     if (!canDelete || !commit) return;
     const employeeToDelete = employees.find((employee) => employee.id === employeeId);
+    if (!employeeToDelete || !window.confirm(`Delete ${employeeToDelete.name || "this employee"} and their related records? This cannot be undone.`)) return;
     const employeeEmail = employeeToDelete?.email?.toLowerCase();
-    commit((current) => ({
-      ...current,
-      employees: current.employees.filter((employee) => employee.id !== employeeId),
-      leaves: current.leaves.filter((leave) => leave.employeeId !== employeeId),
-      expenses: current.expenses.filter((expense) => expense.employeeId !== employeeId),
-      attendance: current.attendance.filter((record) => record.employeeId !== employeeId),
-      tasks: (current.tasks || []).filter((task) => task.employeeId !== employeeId),
-      logins: (current.logins || []).filter((login) => login.employeeId !== employeeId && login.email?.toLowerCase() !== employeeEmail)
-    }));
-    toast("Employee deleted.");
+    try {
+      await apiJson(`/api/employees/${encodeURIComponent(employeeId)}`, { method: "DELETE" });
+      commit((current) => ({
+        ...current,
+        employees: current.employees.filter((employee) => employee.id !== employeeId),
+        leaves: current.leaves.filter((leave) => leave.employeeId !== employeeId),
+        expenses: current.expenses.filter((expense) => expense.employeeId !== employeeId),
+        attendance: current.attendance.filter((record) => record.employeeId !== employeeId),
+        tasks: (current.tasks || []).filter((task) => task.employeeId !== employeeId),
+        payslips: (current.payslips || []).filter((payslip) => payslip.employeeId !== employeeId),
+        logins: (current.logins || []).filter((login) => login.employeeId !== employeeId && login.email?.toLowerCase() !== employeeEmail)
+      }));
+      toast("Employee deleted.");
+    } catch (error) {
+      toast(error.message || "Employee could not be deleted. Please try again.", "error");
+    }
   };
 
   const updateEmployee = (updatedEmployee) => {
