@@ -188,6 +188,19 @@ function createModels(connection) {
   }, { collection: "payslips", versionKey: false, strict: false });
   payslipSchema.index({ employeeId: 1, month: 1 }, { unique: true });
 
+  const cashbookSchema = new mongoose.Schema({
+    id: { type: String, index: true, unique: true },
+    type: String,
+    amount: Number,
+    description: String,
+    paymentMode: String,
+    date: { type: String, index: true },
+    attachment: mongoose.Schema.Types.Mixed,
+    createdBy: String,
+    createdAt: Date,
+    updatedAt: Date
+  }, { collection: "cashbookEntries", versionKey: false, strict: false });
+
   const pushSubscriptionSchema = new mongoose.Schema({
     endpoint: { type: String, unique: true, index: true },
     keys: {
@@ -210,6 +223,7 @@ function createModels(connection) {
     Attendance: connection.model("Attendance", attendanceSchema),
     Bill: connection.model("Bill", billSchema),
     Payslip: connection.model("Payslip", payslipSchema),
+    Cashbook: connection.model("Cashbook", cashbookSchema),
     PushSubscription: connection.model("PushSubscription", pushSubscriptionSchema)
   };
 }

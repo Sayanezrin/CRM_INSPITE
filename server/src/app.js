@@ -190,6 +190,7 @@ async function getPortalState() {
     }
     let attendance = normalizedPortal.attendance || [];
     let tasks = normalizedPortal.tasks || [];
+    let cashbook = normalizedPortal.cashbook || [];
     try {
       const attendanceDocuments = await retryMongoOperation(() => (
         models.Attendance.find({}).sort({ date: -1, updatedAt: -1, _id: -1 }).lean()
@@ -207,9 +208,21 @@ async function getPortalState() {
     } catch (error) {
       console.error("MongoDB task read failed; using portalState task fallback:", error.message);
     }
+    try {
+      const cashbookDocuments = models.Cashbook
+        ? await retryMongoOperation(() => models.Cashbook.find({}).sort({ date: -1, updatedAt: -1, _id: -1 }).lean())
+        : [];
+      const storedEntries = cashbookDocuments.map(toPortalCashbookRecord);
+      cashbook = normalizedPortal.cashbookCollectionEnabled
+        ? storedEntries
+        : mergeCashbookRecords(normalizedPortal.cashbook || [], storedEntries);
+    } catch (error) {
+      console.error("MongoDB cashbook read failed; using portalState cashbook fallback:", error.message);
+    }
     return {
       ...normalizedPortal,
       tasks,
+      cashbook,
       attendance: attendance
         .map((record) => normalizeAttendanceEmployee(record, normalizedPortal.employees))
     };
@@ -259,6 +272,30 @@ function normalizePortalState(payload) {
     payslips: payload?.payslips || []
   };
   return ensureEmployeeProfilesForLogins(normalized);
+}
+
+function toPortalCashbookRecord(record) {
+  const { _id, __v, ...entry } = record || {};
+  return {
+    ...entry,
+    id: String(entry.id || ""),
+    amount: Number(entry.amount || 0),
+    attachment: entry.attachment || null
+  };
+}
+
+function mergeCashbookRecords(currentEntries = [], storedEntries = []) {
+  const byId = new Map();
+  for (const entry of currentEntries || []) {
+    if (entry?.id) byId.set(String(entry.id), entry);
+  }
+  for (const entry of storedEntries || []) {
+    if (entry?.id) byId.set(String(entry.id), { ...byId.get(String(entry.id)), ...entry });
+  }
+  return [...byId.values()].sort((first, second) => (
+    String(second.date || "").localeCompare(String(first.date || ""))
+    || String(second.updatedAt || second.createdAt || "").localeCompare(String(first.updatedAt || first.createdAt || ""))
+  ));
 }
 
 function mergeAttendanceRecords(currentAttendance = [], sharedAttendance = []) {
@@ -377,6 +414,7 @@ function mergePortalState(currentState, incomingState) {
     leaves: nextState.leaves || [],
     bills: nextState.bills || [],
     cashbook: nextState.cashbook || [],
+    cashbookCollectionEnabled: Boolean(currentState.cashbookCollectionEnabled || nextState.cashbookCollectionEnabled),
     tasks: nextState.tasks || [],
     payslips: nextState.payslips || [],
     attendance: mergeAttendanceRecords(currentState.attendance || [], nextState.attendance || [])
@@ -764,7 +802,7 @@ async function deleteBillRecord(id) {
 
 async function saveCashbookRecord(record, session) {
   const models = await getModels();
-  if (!models?.PortalState) {
+  if (!models?.PortalState || !models?.Cashbook) {
     const error = new Error("MongoDB storage is required for cashbook entries.");
     error.status = 503;
     throw error;
@@ -803,25 +841,34 @@ async function saveCashbookRecord(record, session) {
     updatedAt: now
   };
 
+  const cashbook = [savedRecord, ...(portal.cashbook || []).filter((item) => String(item.id) !== entryId)];
+  await Promise.all(cashbook.map((entry) => models.Cashbook.updateOne(
+    { id: String(entry.id) },
+    { $set: toPortalCashbookRecord(entry), $setOnInsert: { createdAt: entry.createdAt || now } },
+    { upsert: true }
+  )));
   await writePortalDocument(models, {
     ...portal,
-    cashbook: [savedRecord, ...(portal.cashbook || []).filter((item) => String(item.id) !== entryId)]
+    cashbook,
+    cashbookCollectionEnabled: true
   });
   return savedRecord;
 }
 
 async function deleteCashbookRecord(id) {
   const models = await getModels();
-  if (!models?.PortalState) {
+  if (!models?.PortalState || !models?.Cashbook) {
     const error = new Error("MongoDB storage is required for cashbook entries.");
     error.status = 503;
     throw error;
   }
   const entryId = String(id);
   const portal = await getRecoveredPortalState();
+  await models.Cashbook.deleteOne({ id: entryId });
   await writePortalDocument(models, {
     ...portal,
-    cashbook: (portal.cashbook || []).filter((item) => String(item.id) !== entryId)
+    cashbook: (portal.cashbook || []).filter((item) => String(item.id) !== entryId),
+    cashbookCollectionEnabled: true
   });
 }
 
