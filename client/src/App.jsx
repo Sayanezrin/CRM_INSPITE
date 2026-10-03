@@ -1066,10 +1066,10 @@ function App() {
     }
   };
 
-  const saveCashbookEntry = async (entry) => {
+  const saveCashbookEntry = async (entry, isUpdate = false) => {
     try {
-      const savedEntry = await apiJson("/api/cashbook", {
-        method: "POST",
+      const savedEntry = await apiJson(isUpdate ? `/api/cashbook/${encodeURIComponent(entry.id)}` : "/api/cashbook", {
+        method: isUpdate ? "PUT" : "POST",
         body: JSON.stringify(entry)
       });
       setStore((current) => {
@@ -2423,6 +2423,8 @@ function cashbookSummaryRows(entries, sortMode = "recent") {
 
 function CashbookPage({ store, createdBy, onSaveEntry, onDeleteEntry }) {
   const [entry, setEntry] = useState(blankCashbookEntry);
+  const [editingEntryId, setEditingEntryId] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [filterDate, setFilterDate] = useState("");
   const [paymentMode, setPaymentMode] = useState("All");
   const [reportOpen, setReportOpen] = useState(false);
@@ -2438,15 +2440,18 @@ function CashbookPage({ store, createdBy, onSaveEntry, onDeleteEntry }) {
       toast("Enter an amount and description.", "error");
       return;
     }
+    setIsSaving(true);
     const saved = await onSaveEntry({
       ...entry,
       amount: Number(entry.amount),
       description: entry.description.trim(),
       createdBy
-    });
+    }, Boolean(editingEntryId));
+    setIsSaving(false);
     if (!saved) return;
     setEntry(blankCashbookEntry());
-    toast(`${entry.type} transaction saved.`);
+    setEditingEntryId(null);
+    toast(`${entry.type} transaction ${editingEntryId ? "updated" : "saved"}.`);
   };
 
   const selectAttachment = async (event) => {
@@ -2463,7 +2468,21 @@ function CashbookPage({ store, createdBy, onSaveEntry, onDeleteEntry }) {
 
   const deleteEntry = async (id) => {
     if (!window.confirm("Delete this cashbook transaction?")) return;
-    await onDeleteEntry(id);
+    const deleted = await onDeleteEntry(id);
+    if (deleted && editingEntryId === id) {
+      setEntry(blankCashbookEntry());
+      setEditingEntryId(null);
+    }
+  };
+
+  const editEntry = (item) => {
+    setEntry({
+      ...blankCashbookEntry(),
+      ...item,
+      amount: String(item.amount ?? ""),
+      attachment: item.attachment || null
+    });
+    setEditingEntryId(item.id);
   };
 
   if (reportOpen) return <CashbookReportPage entries={entries} onBack={() => setReportOpen(false)} />;
@@ -2487,19 +2506,19 @@ function CashbookPage({ store, createdBy, onSaveEntry, onDeleteEntry }) {
             {filteredEntries.length ? filteredEntries.map((item) => <article className="cashbook-entry" key={item.id}>
               <div><strong>{item.description}</strong><span>{billDate(item.date)} · {item.paymentMode}{item.attachment?.dataUrl ? " · Bill attached" : ""}</span></div>
               <strong className={item.type === "In" ? "cash-in" : "cash-out"}>{item.type === "In" ? "+" : "−"}{moneyInr(item.amount)}</strong>
-              <div className="cashbook-entry-actions">{item.attachment?.dataUrl ? <a className="table-action" href={item.attachment.dataUrl} target="_blank" rel="noreferrer">Bill</a> : null}<button className="icon-action danger" type="button" title="Delete transaction" onClick={() => deleteEntry(item.id)}>×</button></div>
+              <div className="cashbook-entry-actions"><button className="table-action" type="button" onClick={() => editEntry(item)}>Edit</button>{item.attachment?.dataUrl ? <a className="table-action" href={item.attachment.dataUrl} target="_blank" rel="noreferrer">Bill</a> : null}<button className="icon-action danger" type="button" title="Delete transaction" onClick={() => deleteEntry(item.id)}>×</button></div>
             </article>) : <p className="empty-note">No cashbook transactions found.</p>}
           </div>
           <form className="cashbook-entry-form" onSubmit={addEntry}>
-            <h3>Add transaction</h3>
+            <h3>{editingEntryId ? "Edit transaction" : "Add transaction"}</h3>
             <div className="transaction-type-picker"><button className={entry.type === "Out" ? "selected out" : "out"} type="button" onClick={() => setEntry((current) => ({ ...current, type: "Out" }))}>OUT</button><button className={entry.type === "In" ? "selected in" : "in"} type="button" onClick={() => setEntry((current) => ({ ...current, type: "In" }))}>IN</button></div>
             <label>Amount<input type="number" min="0" step="0.01" placeholder="₹ Enter amount" value={entry.amount} onChange={(event) => setEntry((current) => ({ ...current, amount: event.target.value }))} /></label>
             <label>Description<textarea placeholder="Enter details (item name, bill no., quantity, etc.)" value={entry.description} onChange={(event) => setEntry((current) => ({ ...current, description: event.target.value }))} /></label>
             <fieldset><legend>Payment mode</legend><label><input type="radio" checked={entry.paymentMode === "Cash"} onChange={() => setEntry((current) => ({ ...current, paymentMode: "Cash" }))} /> Cash</label><label><input type="radio" checked={entry.paymentMode === "Online"} onChange={() => setEntry((current) => ({ ...current, paymentMode: "Online" }))} /> Online</label></fieldset>
             <label>Date<input type="date" value={entry.date} onChange={(event) => setEntry((current) => ({ ...current, date: event.target.value }))} /></label>
             <label>Attach Bill <input type="file" accept={supportedUploadAccept} onChange={selectAttachment} /></label>
-            {entry.attachment ? <p className="attachment-note">Attached: {entry.attachment.name}</p> : null}
-            <button className="primary-button" type="submit">Save {entry.type} Entry</button>
+            {entry.attachment ? <p className="attachment-note">Attached: {entry.attachment.name}{editingEntryId ? " (kept unless you choose a replacement)" : ""}</p> : null}
+            <div className="modal-form-actions"><button className="primary-button" type="submit" disabled={isSaving}>{isSaving ? "Saving…" : editingEntryId ? "Update Entry" : `Save ${entry.type} Entry`}</button>{editingEntryId ? <button className="secondary-button" type="button" onClick={() => { setEntry(blankCashbookEntry()); setEditingEntryId(null); }}>Cancel Edit</button> : null}</div>
           </form>
         </div>
       </Panel>

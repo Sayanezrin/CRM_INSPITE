@@ -826,7 +826,7 @@ async function saveCashbookRecord(record, session) {
       type: String(record.attachment.type || "").slice(0, 120),
       dataUrl: String(record.attachment.dataUrl)
     }
-    : null;
+    : existing?.attachment || null;
   const now = new Date().toISOString();
   const savedRecord = {
     id: entryId,
@@ -1539,6 +1539,15 @@ app.post("/api/cashbook", async (req, res, next) => {
   try {
     if (req.session.role !== "admin" && req.session.role !== "hr") return res.status(403).json({ error: "Only Admin or Accountant can add cashbook entries." });
     res.status(201).json(await saveCashbookRecord(req.body, req.session));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put("/api/cashbook/:id", async (req, res, next) => {
+  try {
+    if (req.session.role !== "admin" && req.session.role !== "hr") return res.status(403).json({ error: "Only Admin or Accountant can update cashbook entries." });
+    res.json(await saveCashbookRecord({ ...req.body, id: req.params.id }, req.session));
   } catch (error) {
     next(error);
   }
