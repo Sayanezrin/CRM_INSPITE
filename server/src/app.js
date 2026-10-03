@@ -762,6 +762,69 @@ async function deleteBillRecord(id) {
   });
 }
 
+async function saveCashbookRecord(record, session) {
+  const models = await getModels();
+  if (!models?.PortalState) {
+    const error = new Error("MongoDB storage is required for cashbook entries.");
+    error.status = 503;
+    throw error;
+  }
+
+  const amount = Number(record?.amount);
+  const description = String(record?.description || "").trim();
+  const date = String(record?.date || "").trim();
+  if (!Number.isFinite(amount) || amount <= 0 || !description || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const error = new Error("Enter a valid date, amount, and description for the cashbook entry.");
+    error.status = 400;
+    throw error;
+  }
+
+  const portal = await getRecoveredPortalState();
+  const entryId = String(record.id || crypto.randomUUID());
+  const existing = (portal.cashbook || []).find((item) => String(item.id) === entryId);
+  const attachment = record?.attachment?.dataUrl && String(record.attachment.dataUrl).length <= 3_000_000
+    ? {
+      name: String(record.attachment.name || "attachment").slice(0, 180),
+      type: String(record.attachment.type || "").slice(0, 120),
+      dataUrl: String(record.attachment.dataUrl)
+    }
+    : null;
+  const now = new Date().toISOString();
+  const savedRecord = {
+    id: entryId,
+    type: record.type === "In" ? "In" : "Out",
+    amount,
+    description,
+    paymentMode: record.paymentMode === "Online" ? "Online" : "Cash",
+    date,
+    attachment,
+    createdBy: session?.name || existing?.createdBy || "Admin",
+    createdAt: existing?.createdAt || now,
+    updatedAt: now
+  };
+
+  await writePortalDocument(models, {
+    ...portal,
+    cashbook: [savedRecord, ...(portal.cashbook || []).filter((item) => String(item.id) !== entryId)]
+  });
+  return savedRecord;
+}
+
+async function deleteCashbookRecord(id) {
+  const models = await getModels();
+  if (!models?.PortalState) {
+    const error = new Error("MongoDB storage is required for cashbook entries.");
+    error.status = 503;
+    throw error;
+  }
+  const entryId = String(id);
+  const portal = await getRecoveredPortalState();
+  await writePortalDocument(models, {
+    ...portal,
+    cashbook: (portal.cashbook || []).filter((item) => String(item.id) !== entryId)
+  });
+}
+
 async function deleteLoginRecord(id) {
   const models = await getModels();
   if (!models?.PortalUser) {
@@ -1416,6 +1479,25 @@ app.delete("/api/bills/:id", async (req, res, next) => {
   try {
     if (req.session.role !== "admin" && req.session.role !== "hr") return res.status(403).json({ error: "Only Admin or Accountant can delete bills." });
     await deleteBillRecord(req.params.id);
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/cashbook", async (req, res, next) => {
+  try {
+    if (req.session.role !== "admin" && req.session.role !== "hr") return res.status(403).json({ error: "Only Admin or Accountant can add cashbook entries." });
+    res.status(201).json(await saveCashbookRecord(req.body, req.session));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete("/api/cashbook/:id", async (req, res, next) => {
+  try {
+    if (req.session.role !== "admin" && req.session.role !== "hr") return res.status(403).json({ error: "Only Admin or Accountant can delete cashbook entries." });
+    await deleteCashbookRecord(req.params.id);
     res.status(204).end();
   } catch (error) {
     next(error);

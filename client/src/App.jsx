@@ -1066,6 +1066,45 @@ function App() {
     }
   };
 
+  const saveCashbookEntry = async (entry) => {
+    try {
+      const savedEntry = await apiJson("/api/cashbook", {
+        method: "POST",
+        body: JSON.stringify(entry)
+      });
+      setStore((current) => {
+        const next = ensureEmployeeProfilesForLogins({
+          ...current,
+          cashbook: [savedEntry, ...(current.cashbook || []).filter((item) => item.id !== savedEntry.id)]
+        });
+        writeState(next);
+        return next;
+      });
+      window.setTimeout(refreshPortalState, 250);
+      return true;
+    } catch (error) {
+      toast(error.message || "Cashbook entry was not saved to MongoDB. Please try again.", "error");
+      return false;
+    }
+  };
+
+  const deleteCashbookEntry = async (entryId) => {
+    try {
+      await apiJson(`/api/cashbook/${encodeURIComponent(entryId)}`, { method: "DELETE" });
+      setStore((current) => {
+        const next = { ...current, cashbook: (current.cashbook || []).filter((item) => item.id !== entryId) };
+        writeState(next);
+        return next;
+      });
+      window.setTimeout(refreshPortalState, 250);
+      toast("Cashbook transaction deleted.");
+      return true;
+    } catch (error) {
+      toast(error.message || "Cashbook transaction was not deleted from MongoDB. Please try again.", "error");
+      return false;
+    }
+  };
+
   if (!session) {
     return <><LoginScreen store={store} onLogin={(nextSession) => { writeSession(nextSession); setSession(nextSession); setActivePage("home"); }} /><ToastHost /></>;
   }
@@ -1080,7 +1119,7 @@ function App() {
       <main className="portal-main">
         <Header session={session} store={store} activePage={activePage} apiStatus={apiStatus} />
         {session.role === "employee" && <InstallAppNotice installPrompt={installPrompt} onPromptUsed={() => setInstallPrompt(null)} />}
-        <RolePage session={session} activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} onEmployeeProfileLoaded={applyEmployeeProfilePayload} apiStatus={apiStatus} />
+        <RolePage session={session} activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} saveCashbookEntry={saveCashbookEntry} deleteCashbookEntry={deleteCashbookEntry} onEmployeeProfileLoaded={applyEmployeeProfilePayload} apiStatus={apiStatus} />
       </main>
       <ToastHost />
     </div>
@@ -1364,18 +1403,18 @@ function Header({ session, store, activePage, apiStatus }) {
   );
 }
 
-function RolePage({ session, activePage, store, commit, commitAttendance, deleteAttendance, onEmployeeProfileLoaded, apiStatus }) {
-  if (session.role === "admin") return <AdminPage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} session={session} apiStatus={apiStatus} />;
-  if (session.role === "hr") return <HrPage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} session={session} apiStatus={apiStatus} />;
+function RolePage({ session, activePage, store, commit, commitAttendance, deleteAttendance, saveCashbookEntry, deleteCashbookEntry, onEmployeeProfileLoaded, apiStatus }) {
+  if (session.role === "admin") return <AdminPage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} saveCashbookEntry={saveCashbookEntry} deleteCashbookEntry={deleteCashbookEntry} session={session} apiStatus={apiStatus} />;
+  if (session.role === "hr") return <HrPage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} saveCashbookEntry={saveCashbookEntry} deleteCashbookEntry={deleteCashbookEntry} session={session} apiStatus={apiStatus} />;
   return <EmployeePage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} session={session} onEmployeeProfileLoaded={onEmployeeProfileLoaded} apiStatus={apiStatus} />;
 }
 
-function AdminPage({ activePage, store, commit, commitAttendance, deleteAttendance, session, apiStatus }) {
+function AdminPage({ activePage, store, commit, commitAttendance, deleteAttendance, saveCashbookEntry, deleteCashbookEntry, session, apiStatus }) {
   if (activePage === "logins") return <DashboardGrid><AddLoginPanel commit={commit} /><LoginAccessTable logins={store.logins || []} commit={commit} className="full-row-panel" /></DashboardGrid>;
   if (activePage === "employees") return <DashboardGrid><AddEmployeePanel commit={commit} /><EmployeeTable employees={store.employees} commit={commit} canEdit canDelete className="full-row-panel" /></DashboardGrid>;
   if (activePage === "finance") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} createdBy="Admin" title="Add Debit Expense" /><FinancePanel store={store} commit={commit} canManage canExport className="full-row-panel" /></DashboardGrid>;
   if (activePage === "billing") return <BillingPage store={store} commit={commit} createdBy="Admin" />;
-  if (activePage === "cashbook") return <CashbookPage store={store} commit={commit} createdBy="Admin" />;
+  if (activePage === "cashbook") return <CashbookPage store={store} createdBy="Admin" onSaveEntry={saveCashbookEntry} onDeleteEntry={deleteCashbookEntry} />;
   if (activePage === "tasks") return <TaskManagerPage store={store} commit={commit} session={session} apiStatus={apiStatus} />;
   if (activePage === "payslips") return <PayslipManagerPage store={store} commit={commit} createdBy="Admin" />;
   if (activePage === "leave") return <DashboardGrid><ApprovalPanel title="Leave Applications" items={store.leaves} kind="leaves" commit={commit} /><LeaveTable leaves={store.leaves} /></DashboardGrid>;
@@ -1384,14 +1423,14 @@ function AdminPage({ activePage, store, commit, commitAttendance, deleteAttendan
   return <AdminHome store={store} commit={commit} />;
 }
 
-function HrPage({ activePage, store, commit, commitAttendance, deleteAttendance, session, apiStatus }) {
+function HrPage({ activePage, store, commit, commitAttendance, deleteAttendance, saveCashbookEntry, deleteCashbookEntry, session, apiStatus }) {
   if (activePage === "employees") return <DashboardGrid><EmployeeTable employees={store.employees} commit={commit} canEdit /></DashboardGrid>;
   if (activePage === "leave") return <DashboardGrid><ApprovalPanel title="Leave Applications" items={store.leaves} kind="leaves" commit={commit} /><LeaveTable leaves={store.leaves} /></DashboardGrid>;
   if (activePage === "expenses") return <DashboardGrid><ApprovalPanel title="Expense Approval Queue" items={store.expenses} kind="expenses" commit={commit} /><ExpenseTable expenses={store.expenses} /></DashboardGrid>;
   if (activePage === "attendance") return <AttendancePage store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} session={session} />;
   if (activePage === "finance") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} createdBy="HR" title="Add Debit Expense" /><FinancePanel store={store} canExport className="full-row-panel" /></DashboardGrid>;
   if (activePage === "billing") return <BillingPage store={store} commit={commit} createdBy="Accountant" />;
-  if (activePage === "cashbook") return <CashbookPage store={store} commit={commit} createdBy="Accountant" />;
+  if (activePage === "cashbook") return <CashbookPage store={store} createdBy="Accountant" onSaveEntry={saveCashbookEntry} onDeleteEntry={deleteCashbookEntry} />;
   if (activePage === "tasks") return <TaskManagerPage store={store} commit={commit} session={session} apiStatus={apiStatus} />;
   if (activePage === "payslips") return <PayslipManagerPage store={store} commit={commit} createdBy="Accountant" />;
   return <DashboardGrid><FinancePanel store={store} canExport className="full-row-panel" /><ApprovalPanel title="Expense Approval Queue" items={store.expenses} kind="expenses" commit={commit} className="full-row-panel" /></DashboardGrid>;
@@ -2382,7 +2421,7 @@ function cashbookSummaryRows(entries, sortMode = "recent") {
   ));
 }
 
-function CashbookPage({ store, commit, createdBy }) {
+function CashbookPage({ store, createdBy, onSaveEntry, onDeleteEntry }) {
   const [entry, setEntry] = useState(blankCashbookEntry);
   const [filterDate, setFilterDate] = useState("");
   const [paymentMode, setPaymentMode] = useState("All");
@@ -2393,16 +2432,19 @@ function CashbookPage({ store, commit, createdBy }) {
   const allTotals = cashbookTotals(entries);
   const todayTotals = cashbookTotals(entries.filter((item) => item.date === today()));
 
-  const addEntry = (event) => {
+  const addEntry = async (event) => {
     event.preventDefault();
     if (!Number(entry.amount) || !String(entry.description).trim()) {
       toast("Enter an amount and description.", "error");
       return;
     }
-    commit((current) => ({
-      ...current,
-      cashbook: [{ ...entry, amount: Number(entry.amount), description: entry.description.trim(), createdBy, createdAt: new Date().toISOString() }, ...(current.cashbook || [])]
-    }));
+    const saved = await onSaveEntry({
+      ...entry,
+      amount: Number(entry.amount),
+      description: entry.description.trim(),
+      createdBy
+    });
+    if (!saved) return;
     setEntry(blankCashbookEntry());
     toast(`${entry.type} transaction saved.`);
   };
@@ -2419,10 +2461,9 @@ function CashbookPage({ store, commit, createdBy }) {
     setEntry((current) => ({ ...current, attachment: { name: file.name, type: file.type, dataUrl } }));
   };
 
-  const deleteEntry = (id) => {
+  const deleteEntry = async (id) => {
     if (!window.confirm("Delete this cashbook transaction?")) return;
-    commit((current) => ({ ...current, cashbook: (current.cashbook || []).filter((item) => item.id !== id) }));
-    toast("Cashbook transaction deleted.");
+    await onDeleteEntry(id);
   };
 
   if (reportOpen) return <CashbookReportPage entries={entries} onBack={() => setReportOpen(false)} />;
