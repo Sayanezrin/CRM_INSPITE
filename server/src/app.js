@@ -842,11 +842,14 @@ async function saveCashbookRecord(record, session) {
   };
 
   const cashbook = [savedRecord, ...(portal.cashbook || []).filter((item) => String(item.id) !== entryId)];
-  await Promise.all(cashbook.map((entry) => models.Cashbook.updateOne(
-    { id: String(entry.id) },
-    { $set: toPortalCashbookRecord(entry), $setOnInsert: { createdAt: entry.createdAt || now } },
-    { upsert: true }
-  )));
+  await Promise.all(cashbook.map((entry) => {
+    const { createdAt, ...entryUpdate } = toPortalCashbookRecord(entry);
+    return models.Cashbook.updateOne(
+      { id: String(entry.id) },
+      { $set: entryUpdate, $setOnInsert: { createdAt: createdAt || now } },
+      { upsert: true }
+    );
+  }));
   await writePortalDocument(models, {
     ...portal,
     cashbook,
