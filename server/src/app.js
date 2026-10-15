@@ -159,6 +159,7 @@ function isAllowed(session, pathValue, method) {
       || (pathValue === "/api/portal/me" && method === "GET")
       || (pathValue === "/api/portal/attendance-record" && method === "POST")
       || pathValue.startsWith("/api/attendance")
+      || pathValue.startsWith("/api/leaves")
       || pathValue.startsWith("/api/tasks");
   }
   return false;
@@ -191,6 +192,7 @@ async function getPortalState() {
     let attendance = normalizedPortal.attendance || [];
     let tasks = normalizedPortal.tasks || [];
     let cashbook = normalizedPortal.cashbook || [];
+    let leaves = normalizedPortal.leaves || [];
     try {
       const attendanceDocuments = await retryMongoOperation(() => (
         models.Attendance.find({}).sort({ date: -1, updatedAt: -1, _id: -1 }).lean()
@@ -219,10 +221,22 @@ async function getPortalState() {
     } catch (error) {
       console.error("MongoDB cashbook read failed; using portalState cashbook fallback:", error.message);
     }
+    try {
+      const leaveDocuments = models.Leave
+        ? await retryMongoOperation(() => models.Leave.find({}).sort({ appliedAt: -1, updatedAt: -1, _id: -1 }).lean())
+        : [];
+      const storedLeaves = leaveDocuments.map(toPortalLeaveRecord);
+      leaves = normalizedPortal.leaveCollectionEnabled
+        ? storedLeaves
+        : mergeLeaveRecords(normalizedPortal.leaves || [], storedLeaves);
+    } catch (error) {
+      console.error("MongoDB leave read failed; using portalState leave fallback:", error.message);
+    }
     return {
       ...normalizedPortal,
       tasks,
       cashbook,
+      leaves,
       attendance: attendance
         .map((record) => normalizeAttendanceEmployee(record, normalizedPortal.employees))
     };
@@ -294,6 +308,32 @@ function mergeCashbookRecords(currentEntries = [], storedEntries = []) {
   }
   return [...byId.values()].sort((first, second) => (
     String(second.date || "").localeCompare(String(first.date || ""))
+    || String(second.updatedAt || second.createdAt || "").localeCompare(String(first.updatedAt || first.createdAt || ""))
+  ));
+}
+
+function toPortalLeaveRecord(record) {
+  const { _id, __v, ...leave } = record || {};
+  return {
+    ...leave,
+    id: String(leave.id || ""),
+    employeeId: String(leave.employeeId || ""),
+    appliedAt: String(leave.appliedAt || ""),
+    createdAt: leave.createdAt || null,
+    updatedAt: leave.updatedAt || null
+  };
+}
+
+function mergeLeaveRecords(currentLeaves = [], storedLeaves = []) {
+  const byId = new Map();
+  for (const leave of currentLeaves || []) {
+    if (leave?.id) byId.set(String(leave.id), leave);
+  }
+  for (const leave of storedLeaves || []) {
+    if (leave?.id) byId.set(String(leave.id), { ...byId.get(String(leave.id)), ...leave });
+  }
+  return [...byId.values()].sort((first, second) => (
+    String(second.appliedAt || "").localeCompare(String(first.appliedAt || ""))
     || String(second.updatedAt || second.createdAt || "").localeCompare(String(first.updatedAt || first.createdAt || ""))
   ));
 }
@@ -412,6 +452,7 @@ function mergePortalState(currentState, incomingState) {
     ledger: nextState.ledger || [],
     expenses: nextState.expenses || [],
     leaves: nextState.leaves || [],
+    leaveCollectionEnabled: Boolean(currentState.leaveCollectionEnabled || nextState.leaveCollectionEnabled),
     bills: nextState.bills || [],
     cashbook: nextState.cashbook || [],
     cashbookCollectionEnabled: Boolean(currentState.cashbookCollectionEnabled || nextState.cashbookCollectionEnabled),
@@ -872,6 +913,94 @@ async function deleteCashbookRecord(id) {
     ...portal,
     cashbook: (portal.cashbook || []).filter((item) => String(item.id) !== entryId),
     cashbookCollectionEnabled: true
+  });
+}
+
+async function saveLeaveRecord(record, session, { allowStatusUpdate = false } = {}) {
+  const models = await getModels();
+  if (!models?.PortalState || !models?.Leave) {
+    const error = new Error("MongoDB storage is required for leave requests.");
+    error.status = 503;
+    throw error;
+  }
+
+  const portal = await getRecoveredPortalState();
+  const leaveId = String(record?.id || crypto.randomUUID());
+  const existing = (portal.leaves || []).find((item) => String(item.id) === leaveId);
+  const sessionEmployee = session?.role === "employee"
+    ? findEmployeeProfileForEmail(portal, session.email)
+    : null;
+  if (session?.role === "employee" && existing && String(existing.employeeId) !== String(sessionEmployee?.id)) {
+    const error = new Error("You can only change your own leave request.");
+    error.status = 403;
+    throw error;
+  }
+  if (!String(record?.reason || existing?.reason || "").trim()) {
+    const error = new Error("A leave reason is required.");
+    error.status = 400;
+    throw error;
+  }
+
+  const now = new Date().toISOString();
+  const savedRecord = {
+    ...existing,
+    ...record,
+    id: leaveId,
+    employeeId: String(sessionEmployee?.id || existing?.employeeId || record?.employeeId || ""),
+    employeeName: String(sessionEmployee?.name || existing?.employeeName || record?.employeeName || session?.name || ""),
+    type: String(record?.type || existing?.type || "Casual Leave"),
+    duration: String(record?.duration || existing?.duration || "Full Day Leave"),
+    from: String(record?.from || existing?.from || ""),
+    to: String(record?.to || existing?.to || ""),
+    reason: String(record?.reason || existing?.reason || "").trim(),
+    status: allowStatusUpdate ? String(record?.status || existing?.status || "Pending") : (existing?.status || "Pending"),
+    appliedAt: String(existing?.appliedAt || record?.appliedAt || new Date().toISOString().slice(0, 10)),
+    createdAt: existing?.createdAt || now,
+    updatedAt: now
+  };
+  if (!["Pending", "Approved", "Rejected"].includes(savedRecord.status)) savedRecord.status = "Pending";
+
+  const leaves = [savedRecord, ...(portal.leaves || []).filter((item) => String(item.id) !== leaveId)];
+  await Promise.all(leaves.map((leave) => {
+    const { createdAt, ...leaveUpdate } = toPortalLeaveRecord(leave);
+    return models.Leave.updateOne(
+      { id: String(leave.id) },
+      { $set: leaveUpdate, $setOnInsert: { createdAt: createdAt || now } },
+      { upsert: true }
+    );
+  }));
+  await writePortalDocument(models, {
+    ...portal,
+    leaves,
+    leaveCollectionEnabled: true
+  });
+  return savedRecord;
+}
+
+async function deleteLeaveRecord(id, session) {
+  const models = await getModels();
+  if (!models?.PortalState || !models?.Leave) {
+    const error = new Error("MongoDB storage is required for leave requests.");
+    error.status = 503;
+    throw error;
+  }
+  const leaveId = String(id);
+  const portal = await getRecoveredPortalState();
+  const existing = (portal.leaves || []).find((item) => String(item.id) === leaveId);
+  if (!existing) return;
+  if (session?.role === "employee") {
+    const employee = findEmployeeProfileForEmail(portal, session.email);
+    if (String(existing.employeeId) !== String(employee?.id) || existing.status !== "Pending") {
+      const error = new Error("Only your pending leave request can be withdrawn.");
+      error.status = 403;
+      throw error;
+    }
+  }
+  await models.Leave.deleteOne({ id: leaveId });
+  await writePortalDocument(models, {
+    ...portal,
+    leaves: (portal.leaves || []).filter((item) => String(item.id) !== leaveId),
+    leaveCollectionEnabled: true
   });
 }
 
@@ -1557,6 +1686,32 @@ app.delete("/api/cashbook/:id", async (req, res, next) => {
   try {
     if (req.session.role !== "admin" && req.session.role !== "hr") return res.status(403).json({ error: "Only Admin or Accountant can delete cashbook entries." });
     await deleteCashbookRecord(req.params.id);
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/leaves", async (req, res, next) => {
+  try {
+    res.status(201).json(await saveLeaveRecord(req.body, req.session));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/api/leaves/:id", async (req, res, next) => {
+  try {
+    if (req.session.role !== "admin" && req.session.role !== "hr") return res.status(403).json({ error: "Only Admin or HR can approve leave requests." });
+    res.json(await saveLeaveRecord({ ...req.body, id: req.params.id }, req.session, { allowStatusUpdate: true }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete("/api/leaves/:id", async (req, res, next) => {
+  try {
+    await deleteLeaveRecord(req.params.id, req.session);
     res.status(204).end();
   } catch (error) {
     next(error);

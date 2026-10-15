@@ -201,6 +201,21 @@ function createModels(connection) {
     updatedAt: Date
   }, { collection: "cashbookEntries", versionKey: false, strict: false });
 
+  const leaveSchema = new mongoose.Schema({
+    id: { type: String, index: true, unique: true },
+    employeeId: { type: String, index: true },
+    employeeName: String,
+    type: String,
+    duration: String,
+    from: String,
+    to: String,
+    reason: String,
+    status: { type: String, index: true },
+    appliedAt: String,
+    createdAt: Date,
+    updatedAt: Date
+  }, { collection: "leaveRequests", versionKey: false, strict: false });
+
   const pushSubscriptionSchema = new mongoose.Schema({
     endpoint: { type: String, unique: true, index: true },
     keys: {
@@ -224,6 +239,7 @@ function createModels(connection) {
     Bill: connection.model("Bill", billSchema),
     Payslip: connection.model("Payslip", payslipSchema),
     Cashbook: connection.model("Cashbook", cashbookSchema),
+    Leave: connection.model("Leave", leaveSchema),
     PushSubscription: connection.model("PushSubscription", pushSubscriptionSchema)
   };
 }
