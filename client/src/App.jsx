@@ -9,8 +9,8 @@ const REMEMBERED_EMAIL_KEY = "inspite.people.remembered.email";
 const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://127.0.0.1:5018" : "");
 const LOCAL_PASSWORD_FALLBACK_ENABLED = import.meta.env.DEV || import.meta.env.VITE_ALLOW_LOCAL_PASSWORD_FALLBACK === "true";
 const CHECKIN_LOCATION = {
-  latitude: Number(import.meta.env.VITE_CHECKIN_LATITUDE || 10.011327),
-  longitude: Number(import.meta.env.VITE_CHECKIN_LONGITUDE || 76.3607931),
+  latitude: Number(import.meta.env.VITE_CHECKIN_LATITUDE || 10.0005506),
+  longitude: Number(import.meta.env.VITE_CHECKIN_LONGITUDE || 76.3495145),
   radiusMeters: Number(import.meta.env.VITE_CHECKIN_RADIUS_METERS || 200)
 };
 
