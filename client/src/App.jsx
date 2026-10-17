@@ -1647,7 +1647,7 @@ function normalizeAttendanceEmployee(record, employees = []) {
 
 function AttendancePage({ store, commit, commitAttendance, deleteAttendance, session }) {
   const currentEmployee = getEmployeeForSession(store, session);
-  const canManagePayroll = session.role === "admin";
+  const canManagePayroll = session.role === "admin" || session.role === "hr";
   return (
     <DashboardGrid>
       {currentEmployee ? (
