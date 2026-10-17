@@ -1437,6 +1437,19 @@ button:disabled {
   min-width: 1020px;
 }
 
+.attendance-payroll-report .data-head,
+.attendance-payroll-report .data-row {
+  grid-template-columns: minmax(190px, 1.8fr) 145px 110px 90px 145px 130px 120px;
+  min-width: 930px;
+}
+
+.attendance-payroll-report .data-row small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .data-head span,
 .data-row span {
   min-height: 42px;

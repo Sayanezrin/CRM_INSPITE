@@ -1647,6 +1647,7 @@ function normalizeAttendanceEmployee(record, employees = []) {
 
 function AttendancePage({ store, commit, commitAttendance, deleteAttendance, session }) {
   const currentEmployee = getEmployeeForSession(store, session);
+  const canManagePayroll = session.role === "admin";
   return (
     <DashboardGrid>
       {currentEmployee ? (
@@ -1656,6 +1657,7 @@ function AttendancePage({ store, commit, commitAttendance, deleteAttendance, ses
           <p className="empty-note">No employee profile is linked to {session.email}. Add this email in Employee Directory to mark attendance.</p>
         </Panel>
       )}
+      {canManagePayroll ? <MonthlyAttendancePayrollReport employees={store.employees} attendance={store.attendance} leaves={store.leaves} /> : null}
       <AttendanceTable
         attendance={store.attendance}
         employees={store.employees}
@@ -4214,6 +4216,160 @@ function buildAttendanceReportRows(records, periodType) {
   return [...groups.values()].sort((first, second) => (
     second.period.localeCompare(first.period) || first.employeeName.localeCompare(second.employeeName)
   ));
+}
+
+function attendanceMonthLabel(month) {
+  if (!/^\d{4}-\d{2}$/.test(String(month || ""))) return "Selected Month";
+  return new Date(`${month}-01T12:00:00`).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+}
+
+function attendanceMonthDates(month) {
+  const [year, monthNumber] = String(month || "").split("-").map(Number);
+  if (!year || !monthNumber) return [];
+  const days = new Date(year, monthNumber, 0).getDate();
+  return Array.from({ length: days }, (_, index) => `${year}-${String(monthNumber).padStart(2, "0")}-${String(index + 1).padStart(2, "0")}`);
+}
+
+function leaveDaysInAttendanceMonth(leave, month) {
+  const monthDates = new Set(attendanceMonthDates(month));
+  const start = dateInputValue(leave.from || leave.appliedAt);
+  const end = dateInputValue(leave.to || leave.from || leave.appliedAt);
+  if (!start || !end) return 0;
+  const cursor = new Date(`${start}T12:00:00`);
+  const finish = new Date(`${end}T12:00:00`);
+  let days = 0;
+  while (cursor <= finish) {
+    if (monthDates.has(dateInputValue(cursor))) days += 1;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return String(leave.duration || "").toLowerCase().includes("half") ? Math.min(days, 1) * 0.5 : days;
+}
+
+function buildMonthlyAttendancePayrollRows(employees = [], attendance = [], leaves = [], month) {
+  const monthDates = attendanceMonthDates(month);
+  const monthDateSet = new Set(monthDates);
+  const employeeById = new Map((employees || []).map((employee) => [String(employee.id), employee]));
+  const employeeIds = new Set((employees || []).filter((employee) => employee.status !== "Inactive").map((employee) => String(employee.id)));
+  for (const record of attendance || []) if (monthDateSet.has(dateInputValue(record.date)) && record.employeeId) employeeIds.add(String(record.employeeId));
+  for (const leave of leaves || []) if (leave.status === "Approved" && leave.employeeId && leaveDaysInAttendanceMonth(leave, month)) employeeIds.add(String(leave.employeeId));
+
+  return [...employeeIds].map((employeeId) => {
+    const employee = employeeById.get(employeeId) || {};
+    const attendanceDates = new Set((attendance || [])
+      .filter((record) => String(record.employeeId) === employeeId && monthDateSet.has(dateInputValue(record.date)))
+      .map((record) => dateInputValue(record.date)));
+    const workFromHomeDays = new Set((attendance || [])
+      .filter((record) => String(record.employeeId) === employeeId && monthDateSet.has(dateInputValue(record.date)) && String(record.status || "").toLowerCase().includes("work from home"))
+      .map((record) => dateInputValue(record.date)));
+    const approvedLeaves = (leaves || []).filter((leave) => String(leave.employeeId) === employeeId && leave.status === "Approved" && leaveDaysInAttendanceMonth(leave, month));
+    const leaveDays = approvedLeaves.reduce((sum, leave) => sum + leaveDaysInAttendanceMonth(leave, month), 0);
+    const attendanceDays = attendanceDates.size;
+    const payrollDays = Math.min(monthDates.length, attendanceDays + leaveDays);
+    return {
+      id: employeeId,
+      employeeName: employee.name || (attendance || []).find((record) => String(record.employeeId) === employeeId)?.employeeName || "Unknown Employee",
+      department: employee.department || "General",
+      monthlySalary: Number(employee.salary || 0),
+      calendarDays: monthDates.length,
+      attendanceDays,
+      workFromHomeDays: workFromHomeDays.size,
+      approvedLeaveDays: leaveDays,
+      payrollDays,
+      unrecordedDays: Math.max(0, monthDates.length - payrollDays)
+    };
+  }).sort((first, second) => first.employeeName.localeCompare(second.employeeName));
+}
+
+function MonthlyAttendancePayrollReport({ employees, attendance, leaves }) {
+  const [month, setMonth] = useState(today().slice(0, 7));
+  const rows = buildMonthlyAttendancePayrollRows(employees, attendance.map((record) => normalizeAttendanceEmployee(record, employees)), leaves, month);
+  const leaveDetails = leaves.filter((leave) => leave.status === "Approved" && leaveDaysInAttendanceMonth(leave, month));
+  const downloadPdf = () => {
+    const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    let y = 16;
+    const drawHeader = () => {
+      pdf.setFillColor(20, 44, 83);
+      pdf.rect(0, 0, pageWidth, 10, "F");
+      pdf.setTextColor(24, 33, 47);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(16);
+      pdf.text("Inspite Technologies", 14, y);
+      pdf.setFontSize(12);
+      pdf.text("Monthly Attendance & Leave Report", 14, y + 7);
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(9);
+      pdf.text(`${attendanceMonthLabel(month)} • Generated ${new Date().toLocaleDateString("en-IN")}`, 14, y + 13);
+      y += 22;
+    };
+    const drawTableHeader = () => {
+      pdf.setFillColor(232, 239, 249);
+      pdf.rect(14, y - 5, pageWidth - 28, 7, "F");
+      pdf.setTextColor(24, 33, 47);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(7.5);
+      ["Employee", "Salary", "Attend.", "WFH", "Approved leave", "Payroll days", "Unrecorded"].forEach((label, index) => {
+        const positions = [16, 100, 129, 146, 161, 194, 222];
+        pdf.text(label, positions[index], y);
+      });
+      pdf.setFont("helvetica", "normal");
+      y += 7;
+    };
+    drawHeader();
+    drawTableHeader();
+    rows.forEach((row) => {
+      if (y > pageHeight - 20) {
+        pdf.addPage();
+        y = 16;
+        drawHeader();
+        drawTableHeader();
+      }
+      pdf.setFontSize(8);
+      pdf.text(String(row.employeeName).slice(0, 38), 16, y);
+      pdf.text(moneyInr(row.monthlySalary), 100, y, { align: "right" });
+      pdf.text(String(row.attendanceDays), 134, y, { align: "center" });
+      pdf.text(String(row.workFromHomeDays), 150, y, { align: "center" });
+      pdf.text(String(row.approvedLeaveDays), 177, y, { align: "center" });
+      pdf.text(`${row.payrollDays}/${row.calendarDays}`, 204, y, { align: "center" });
+      pdf.text(String(row.unrecordedDays), 232, y, { align: "center" });
+      y += 6;
+    });
+    if (leaveDetails.length) {
+      if (y > pageHeight - 35) { pdf.addPage(); y = 16; }
+      y += 5;
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(10);
+      pdf.text("Approved leave included in this report", 14, y);
+      y += 6;
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(8);
+      leaveDetails.forEach((leave) => {
+        if (y > pageHeight - 14) { pdf.addPage(); y = 16; }
+        const name = employees.find((employee) => String(employee.id) === String(leave.employeeId))?.name || leave.employeeName || "Employee";
+        pdf.text(`${name} — ${leave.type || "Leave"} (${leave.duration || "Full day"}), ${billDate(leave.from)} to ${billDate(leave.to || leave.from)}: ${leave.reason || "--"}`.slice(0, 180), 14, y);
+        y += 5;
+      });
+    }
+    pdf.setFontSize(7);
+    pdf.setTextColor(95, 108, 125);
+    pdf.text("Attendance and approved leave summary for payroll review. Salary values are reference amounts and do not change payslips.", 14, pageHeight - 8);
+    pdf.save(`attendance-leave-report-${month}.pdf`);
+  };
+
+  return (
+    <Panel title="Monthly Attendance & Leave Report" className="full-row-panel">
+      <div className="table-filter-bar">
+        <label>Salary month<input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label>
+        <button type="button" className="primary-button" onClick={downloadPdf}>Download PDF</button>
+      </div>
+      <p className="empty-note">Includes approved leave for the selected month. Salary amounts are shown for payroll review and do not modify payslips.</p>
+      <div className="data-table attendance-payroll-report">
+        <div className="data-head"><span>Employee</span><span>Monthly Salary</span><span>Attendance</span><span>WFH</span><span>Approved Leave</span><span>Payroll Days</span><span>Unrecorded</span></div>
+        {rows.length ? rows.map((row) => <div className="data-row" key={row.id}><span>{row.employeeName}<small>{row.department}</small></span><span>{moneyInr(row.monthlySalary)}</span><span>{row.attendanceDays}</span><span>{row.workFromHomeDays}</span><span>{row.approvedLeaveDays}</span><span>{row.payrollDays}/{row.calendarDays}</span><span>{row.unrecordedDays}</span></div>) : <p className="empty-note">No employees or attendance records found for this month.</p>}
+      </div>
+    </Panel>
+  );
 }
 
 function getTotals(rows) {
