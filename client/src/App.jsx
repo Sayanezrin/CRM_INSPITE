@@ -2599,13 +2599,12 @@ function CashbookPage({ store, createdBy, onSaveEntry, onDeleteEntry }) {
   const [visibleMonth, setVisibleMonth] = useState("");
   const [paymentMode, setPaymentMode] = useState("All");
   const [reportOpen, setReportOpen] = useState(false);
-  const [page, setPage] = useState(1);
   const [pageData, setPageData] = useState(null);
   const [pageError, setPageError] = useState("");
 
   useEffect(() => {
     let active = true;
-    const search = new URLSearchParams({ page: String(page), limit: "25" });
+    const search = new URLSearchParams({ limit: "1000" });
     if (visibleMonth) search.set("month", visibleMonth);
     apiJson(`/api/cashbook?${search.toString()}`)
       .then((payload) => {
@@ -2615,7 +2614,7 @@ function CashbookPage({ store, createdBy, onSaveEntry, onDeleteEntry }) {
       })
       .catch(() => active && setPageError("Cashbook entries could not be loaded."));
     return () => { active = false; };
-  }, [page, visibleMonth]);
+  }, [visibleMonth]);
 
   const entries = [...(pageData?.entries || store.cashbook || [])].sort((first, second) => String(second.date || "").localeCompare(String(first.date || "")) || String(second.createdAt || "").localeCompare(String(first.createdAt || "")));
   const filteredEntries = entries.filter((item) => (!filterDate || item.date === filterDate) && (paymentMode === "All" || item.paymentMode === paymentMode));
@@ -2717,13 +2716,12 @@ function CashbookPage({ store, createdBy, onSaveEntry, onDeleteEntry }) {
           <button type="button" className="secondary-button" onClick={backupEntries}>Back Up Entries</button>
         </div>
         <div className="cashbook-filters">
-          <label>Visible month<select value={visibleMonth} onChange={(event) => { setVisibleMonth(event.target.value); setPage(1); }}><option value="">All months</option>{(pageData?.months || []).map((month) => <option key={month} value={month}>{cashbookMonthLabel(month)}</option>)}</select></label>
+          <label>Visible month<select value={visibleMonth} onChange={(event) => setVisibleMonth(event.target.value)}><option value="">All months</option>{(pageData?.months || []).map((month) => <option key={month} value={month}>{cashbookMonthLabel(month)}</option>)}</select></label>
           <label>Date<input type="date" value={filterDate} onChange={(event) => setFilterDate(event.target.value)} /></label>
           <label>Payment Mode<select value={paymentMode} onChange={(event) => setPaymentMode(event.target.value)}><option>All</option><option>Cash</option><option>Online</option></select></label>
-          <button type="button" className="secondary-button" onClick={() => { setVisibleMonth(""); setFilterDate(""); setPaymentMode("All"); setPage(1); }}>Clear Filters</button>
+          <button type="button" className="secondary-button" onClick={() => { setVisibleMonth(""); setFilterDate(""); setPaymentMode("All"); }}>Clear Filters</button>
         </div>
         <div className="cashbook-totals"><span>Visible entries: {filteredEntries.length}</span><strong className="cash-in">In {moneyInr(visibleTotals.in)}</strong><strong className="cash-out">Out {moneyInr(visibleTotals.out)}</strong></div>
-        {pageData?.totalPages > 1 ? <div className="modal-form-actions"><button className="secondary-button" type="button" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>Previous</button><span>Page {pageData.page} of {pageData.totalPages} · {pageData.total} entries</span><button className="secondary-button" type="button" disabled={page >= pageData.totalPages} onClick={() => setPage((current) => current + 1)}>Next</button></div> : null}
         {pageError ? <p className="empty-note">{pageError}</p> : null}
         <div className="cashbook-layout">
           <div className="cashbook-list">

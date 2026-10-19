@@ -1828,7 +1828,9 @@ app.get("/api/cashbook", async (req, res, next) => {
     const requestedLimit = Number.parseInt(req.query.limit, 10);
     const requestedMonth = String(req.query.month || "").trim();
     const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
-    const limit = Math.min(Number.isFinite(requestedLimit) && requestedLimit > 0 ? requestedLimit : 25, 100);
+    // The Cashbook is filtered by month in the UI. Keep enough list capacity
+    // for a complete month (or the current full history) without pagination.
+    const limit = Math.min(Number.isFinite(requestedLimit) && requestedLimit > 0 ? requestedLimit : 1000, 1000);
     const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(requestedMonth) ? requestedMonth : "";
     const filter = month ? { date: { $regex: `^${month}-` } } : {};
     const [total, availableDates] = await Promise.all([
