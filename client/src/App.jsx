@@ -1282,7 +1282,7 @@ function App() {
   }
 
   return (
-    <div className="portal-shell">
+    <div className={`portal-shell ${activePage === "cashbook" ? "cashbook-workspace" : ""}`.trim()}>
       <Sidebar session={session} activePage={activePage} onPageChange={setActivePage} onLogout={() => { writeSession(null); setSession(null); }} />
       <main className="portal-main">
         <Header session={session} store={store} activePage={activePage} apiStatus={apiStatus} />

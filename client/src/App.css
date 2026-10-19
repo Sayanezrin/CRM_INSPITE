@@ -605,6 +605,54 @@ button:disabled {
 .transaction-type-picker .in.selected { border-color: #9bd5b4; background: #edf9f1; }
 .cashbook-report-modal { width: min(760px, calc(100vw - 32px)); }
 
+/* On desktop the Cashbook behaves like a fixed workspace: controls remain
+   visible and only the transaction list (or the entry form when necessary)
+   receives its own scrollbar. */
+@media (min-width: 1181px) and (min-height: 680px) {
+  .cashbook-workspace {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .cashbook-workspace .sidebar {
+    overflow-y: auto;
+  }
+
+  .cashbook-workspace .portal-main {
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .cashbook-workspace .dashboard-grid {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .cashbook-workspace .full-row-panel {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .cashbook-workspace .cashbook-layout {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .cashbook-workspace .cashbook-list,
+  .cashbook-workspace .cashbook-entry-form {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
 .cashbook-report-page {
   min-height: calc(100vh - 52px);
   display: grid;
