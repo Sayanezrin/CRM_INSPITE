@@ -1821,8 +1821,15 @@ app.post("/api/cashbook/backup", async (req, res, next) => {
     if (req.session.role !== "admin" && req.session.role !== "hr") return res.status(403).json({ error: "Only Admin or Accountant can back up cashbook entries." });
     const models = await getModels();
     if (!models?.CashbookBackup) return res.status(503).json({ error: "MongoDB storage is required for cashbook backups." });
-    const portal = await getRecoveredPortalState();
-    res.status(201).json(await createCashbookBackup(models, portal.cashbook || [], "manual"));
+    const storedEntries = await models.Cashbook.find({}).sort({ date: -1, updatedAt: -1, _id: -1 }).lean();
+    let portalEntries = [];
+    try {
+      portalEntries = (await getPortalDocumentState(models)).cashbook || [];
+    } catch (error) {
+      console.error("Cashbook backup portal fallback read failed:", error.message);
+    }
+    const entries = mergeCashbookRecords(portalEntries, storedEntries.map(toPortalCashbookRecord));
+    res.status(201).json(await createCashbookBackup(models, entries, "manual"));
   } catch (error) {
     next(error);
   }
