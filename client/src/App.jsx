@@ -839,6 +839,7 @@ function App() {
   const [apiStatus, setApiStatus] = useState("connecting");
   const [installPrompt, setInstallPrompt] = useState(null);
   const healthFailuresRef = useRef(0);
+  const healthRetryCountRef = useRef(0);
 
   useEffect(() => {
     const handleInstallPrompt = (event) => {
@@ -855,10 +856,18 @@ function App() {
     .then((payload) => {
       if (payload.storage === "mongodb") {
         healthFailuresRef.current = 0;
+        healthRetryCountRef.current = 0;
         setApiStatus("connected");
       } else if (payload.storage === "connecting") {
         healthFailuresRef.current = 0;
         setApiStatus((current) => current === "connected" ? "connected" : "connecting");
+        // A Vercel function can answer the first health request while its
+        // MongoDB connection is still warming up. Poll briefly instead of
+        // leaving the UI permanently stuck on "connecting".
+        if (healthRetryCountRef.current < 5) {
+          healthRetryCountRef.current += 1;
+          window.setTimeout(refreshBackendHealth, 2000);
+        }
       } else {
         healthFailuresRef.current += 1;
         if (healthFailuresRef.current >= 2) setApiStatus("offline");
