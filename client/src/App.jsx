@@ -891,6 +891,17 @@ function App() {
   const refreshEmployeeProfile = () => apiJson("/api/portal/me")
     .then(applyEmployeeProfilePayload);
 
+  const refreshCashbook = () => apiJson("/api/cashbook")
+    .then((cashbook) => {
+      if (!Array.isArray(cashbook)) return null;
+      setStore((current) => {
+        const next = { ...current, cashbook };
+        writeState(next);
+        return next;
+      });
+      return cashbook;
+    });
+
   const refreshPortalState = () => {
     if (session?.provider === "local-password" || String(session?.token || "").startsWith("local-")) {
       return LOCAL_PASSWORD_FALLBACK_ENABLED ? refreshSharedAttendance() : Promise.resolve(null);
@@ -924,6 +935,9 @@ function App() {
             .catch(() => applyPortalPayload(payload));
         }
         const nextPayload = applyPortalPayload(payload);
+        if (session?.role === "admin" || session?.role === "hr") {
+          return refreshCashbook().then(() => nextPayload).catch(() => nextPayload);
+        }
         if (session?.role === "employee" && !getEmployeeForSession(nextPayload, session)) {
           return refreshEmployeeProfile().catch(() => nextPayload);
         }
@@ -938,6 +952,9 @@ function App() {
         }
         if (session?.role === "employee") {
           return refreshEmployeeProfile().catch(() => refreshSharedAttendance());
+        }
+        if (session?.role === "admin" || session?.role === "hr") {
+          return refreshCashbook().catch(() => refreshSharedAttendance());
         }
         return refreshSharedAttendance();
       });
