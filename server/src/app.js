@@ -1909,7 +1909,10 @@ app.get("/api/cashbook", async (req, res, next) => {
       .sort((first, second) => second.localeCompare(first));
     res.json({ total, page, limit, month, months, totalPages: Math.max(1, Math.ceil(total / limit)), entries: entries.map((entry) => ({
       ...toPortalCashbookRecord(entry),
-      attachment: entry.attachment?.dataUrl ? { name: entry.attachment.name || "attachment", type: entry.attachment.type || "" } : null
+      // The list query intentionally excludes attachment.dataUrl so it stays
+      // small. Use the retained file metadata to tell the client a bill is
+      // available; the full data is fetched only after “View Bill” is clicked.
+      attachment: entry.attachment?.name ? { name: entry.attachment.name, type: entry.attachment.type || "" } : null
     })) });
   } catch (error) {
     next(error);
