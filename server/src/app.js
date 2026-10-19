@@ -21,6 +21,14 @@ const roles = {
   employee: { title: "Employee", email: "employee@inspite.local" }
 };
 const sessionDurationSeconds = 30 * 24 * 60 * 60;
+const cloudinaryFolder = "inspite/cashbook-bills";
+
+function getCloudinaryConfig() {
+  const cloudName = String(process.env.CLOUDINARY_CLOUD_NAME || "").trim();
+  const apiKey = String(process.env.CLOUDINARY_API_KEY || "").trim();
+  const apiSecret = String(process.env.CLOUDINARY_API_SECRET || "").trim();
+  return cloudName && apiKey && apiSecret ? { cloudName, apiKey, apiSecret } : null;
+}
 
 const emptyPortalState = {
   employees: [],
@@ -895,7 +903,17 @@ async function saveCashbookRecord(record, session) {
   const entryId = String(record.id || crypto.randomUUID());
   const existingDocument = await models.Cashbook.findOne({ id: entryId }).lean();
   const existing = existingDocument ? toPortalCashbookRecord(existingDocument) : null;
-  const attachment = record?.attachment?.dataUrl && String(record.attachment.dataUrl).length <= 3_000_000
+  const cloudinaryUrl = String(record?.attachment?.url || "").trim();
+  const attachment = /^https:\/\/res\.cloudinary\.com\//i.test(cloudinaryUrl)
+    ? {
+      name: String(record.attachment.name || "attachment").slice(0, 180),
+      type: String(record.attachment.type || "").slice(0, 120),
+      url: cloudinaryUrl,
+      publicId: String(record.attachment.publicId || "").slice(0, 300),
+      resourceType: String(record.attachment.resourceType || "").slice(0, 40),
+      size: Number(record.attachment.size || 0)
+    }
+    : record?.attachment?.dataUrl && String(record.attachment.dataUrl).length <= 3_000_000
     ? {
       name: String(record.attachment.name || "attachment").slice(0, 180),
       type: String(record.attachment.type || "").slice(0, 120),
@@ -1895,7 +1913,8 @@ app.get("/api/cashbook", async (req, res, next) => {
       createdAt: 1,
       updatedAt: 1,
       "attachment.name": 1,
-      "attachment.type": 1
+      "attachment.type": 1,
+      "attachment.url": 1
     })
       .sort({ date: -1, updatedAt: -1, _id: -1 })
       .skip((page - 1) * limit)
@@ -1912,7 +1931,7 @@ app.get("/api/cashbook", async (req, res, next) => {
       // The list query intentionally excludes attachment.dataUrl so it stays
       // small. Use the retained file metadata to tell the client a bill is
       // available; the full data is fetched only after “View Bill” is clicked.
-      attachment: entry.attachment?.name ? { name: entry.attachment.name, type: entry.attachment.type || "" } : null
+      attachment: entry.attachment?.name ? { name: entry.attachment.name, type: entry.attachment.type || "", url: entry.attachment.url || "" } : null
     })) });
   } catch (error) {
     next(error);
@@ -1928,6 +1947,7 @@ app.get("/api/cashbook/:id/attachment", async (req, res, next) => {
       models.Cashbook.findOne({ id: String(req.params.id) }, { attachment: 1 }).lean()
     ));
     const attachment = entry?.attachment;
+    if (attachment?.url && /^https:\/\/res\.cloudinary\.com\//i.test(String(attachment.url))) return res.redirect(302, String(attachment.url));
     if (!attachment?.dataUrl) return res.status(404).json({ error: "No bill is attached to this cashbook entry." });
     const dataUrl = String(attachment.dataUrl);
     const match = dataUrl.match(/^data:([^;,]+)?(?:;charset=[^;,]+)?;base64,([A-Za-z0-9+/=\s]+)$/i);
@@ -1945,6 +1965,17 @@ app.get("/api/cashbook/:id/attachment", async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+app.post("/api/cashbook/upload-signature", (req, res) => {
+  if (req.session.role !== "admin" && req.session.role !== "hr") return res.status(403).json({ error: "Only Admin or HR can upload cashbook bills." });
+  const config = getCloudinaryConfig();
+  if (!config) return res.status(503).json({ error: "Cloudinary bill storage is not configured yet." });
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signature = crypto.createHash("sha1")
+    .update(`folder=${cloudinaryFolder}&timestamp=${timestamp}${config.apiSecret}`)
+    .digest("hex");
+  res.json({ cloudName: config.cloudName, apiKey: config.apiKey, folder: cloudinaryFolder, timestamp, signature });
 });
 
 app.post("/api/cashbook", async (req, res, next) => {

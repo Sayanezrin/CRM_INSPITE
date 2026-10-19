@@ -318,6 +318,27 @@ async function apiFile(path) {
   };
 }
 
+async function uploadCashbookBill(file) {
+  const credentials = await apiJson("/api/cashbook/upload-signature", { method: "POST" });
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("api_key", credentials.apiKey);
+  formData.append("timestamp", String(credentials.timestamp));
+  formData.append("folder", credentials.folder);
+  formData.append("signature", credentials.signature);
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(credentials.cloudName)}/auto/upload`, { method: "POST", body: formData });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload.secure_url) throw new Error(payload.error?.message || "Bill upload to Cloudinary failed.");
+  return {
+    name: file.name,
+    type: file.type || payload.format || "application/octet-stream",
+    url: payload.secure_url,
+    publicId: payload.public_id || "",
+    resourceType: payload.resource_type || "",
+    size: Number(payload.bytes || file.size || 0)
+  };
+}
+
 function urlBase64ToUint8Array(value) {
   const padded = `${value}${"=".repeat((4 - (value.length % 4)) % 4)}`.replace(/-/g, "+").replace(/_/g, "/");
   const raw = window.atob(padded);
@@ -2610,6 +2631,7 @@ function CashbookPage({ store, createdBy, onSaveEntry, onDeleteEntry }) {
   const [entry, setEntry] = useState(blankCashbookEntry);
   const [editingEntryId, setEditingEntryId] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingBill, setIsUploadingBill] = useState(false);
   const [filterDate, setFilterDate] = useState("");
   const [visibleMonth, setVisibleMonth] = useState("");
   const [paymentMode, setPaymentMode] = useState("All");
@@ -2672,6 +2694,10 @@ function CashbookPage({ store, createdBy, onSaveEntry, onDeleteEntry }) {
 
   const addEntry = async (event) => {
     event.preventDefault();
+    if (isUploadingBill) {
+      toast("Wait for the bill upload to finish.", "error");
+      return;
+    }
     if (!Number(entry.amount) || !String(entry.description).trim()) {
       toast("Enter an amount and description.", "error");
       return;
@@ -2699,8 +2725,17 @@ function CashbookPage({ store, createdBy, onSaveEntry, onDeleteEntry }) {
       event.target.value = "";
       return;
     }
-    const dataUrl = await fileToDataUrl(file);
-    setEntry((current) => ({ ...current, attachment: { name: file.name, type: file.type, dataUrl } }));
+    setIsUploadingBill(true);
+    try {
+      const attachment = await uploadCashbookBill(file);
+      setEntry((current) => ({ ...current, attachment }));
+      toast("Bill uploaded securely.");
+    } catch (error) {
+      toast(error.message || "The bill could not be uploaded.", "error");
+      event.target.value = "";
+    } finally {
+      setIsUploadingBill(false);
+    }
   };
 
   const deleteEntry = async (id) => {
@@ -2723,9 +2758,13 @@ function CashbookPage({ store, createdBy, onSaveEntry, onDeleteEntry }) {
     setEditingEntryId(item.id);
   };
 
-  const viewBill = async (entryId) => {
+  const viewBill = async (item) => {
     try {
-      const payload = await apiFile(`/api/cashbook/${encodeURIComponent(entryId)}/attachment`);
+      if (item.attachment?.url) {
+        setBillPreview({ name: item.attachment.name, type: item.attachment.type || "application/octet-stream", dataUrl: item.attachment.url });
+        return;
+      }
+      const payload = await apiFile(`/api/cashbook/${encodeURIComponent(item.id)}/attachment`);
       if (!payload.file.size) throw new Error("No bill is attached to this cashbook entry.");
       setBillPreview((current) => {
         if (current?.objectUrl) URL.revokeObjectURL(current.dataUrl);
@@ -2765,7 +2804,7 @@ function CashbookPage({ store, createdBy, onSaveEntry, onDeleteEntry }) {
             {filteredEntries.length ? filteredEntries.map((item) => <article className="cashbook-entry" key={item.id}>
               <div><strong>{item.description}</strong><span>{billDate(item.date)} · {item.paymentMode}{item.attachment?.dataUrl ? " · Bill attached" : ""}</span></div>
               <strong className={item.type === "In" ? "cash-in" : "cash-out"}>{item.type === "In" ? "+" : "−"}{moneyInr(item.amount)}</strong>
-              <div className="cashbook-entry-actions"><button className="table-action" type="button" onClick={() => editEntry(item)}>Edit</button>{item.attachment?.name ? <button className="table-action" type="button" onClick={() => viewBill(item.id)}>View Bill</button> : null}<button className="icon-action danger" type="button" title="Delete transaction" onClick={() => deleteEntry(item.id)}>×</button></div>
+              <div className="cashbook-entry-actions"><button className="table-action" type="button" onClick={() => editEntry(item)}>Edit</button>{item.attachment?.name ? <button className="table-action" type="button" onClick={() => viewBill(item)}>View Bill</button> : null}<button className="icon-action danger" type="button" title="Delete transaction" onClick={() => deleteEntry(item.id)}>×</button></div>
             </article>) : <p className="empty-note">No cashbook transactions found.</p>}
           </div>
           <form className="cashbook-entry-form" onSubmit={addEntry}>
@@ -2775,9 +2814,9 @@ function CashbookPage({ store, createdBy, onSaveEntry, onDeleteEntry }) {
             <label>Description<textarea placeholder="Enter details (item name, bill no., quantity, etc.)" value={entry.description} onChange={(event) => setEntry((current) => ({ ...current, description: event.target.value }))} /></label>
             <fieldset><legend>Payment mode</legend><label><input type="radio" checked={entry.paymentMode === "Cash"} onChange={() => setEntry((current) => ({ ...current, paymentMode: "Cash" }))} /> Cash</label><label><input type="radio" checked={entry.paymentMode === "Online"} onChange={() => setEntry((current) => ({ ...current, paymentMode: "Online" }))} /> Online</label></fieldset>
             <label>Date<input type="date" value={entry.date} onChange={(event) => setEntry((current) => ({ ...current, date: event.target.value }))} /></label>
-            <label>Attach Bill <input type="file" accept={supportedUploadAccept} onChange={selectAttachment} /></label>
-            {entry.attachment ? <p className="attachment-note">Attached: {entry.attachment.name}{editingEntryId ? " (kept unless you choose a replacement)" : ""}</p> : null}
-            <div className="modal-form-actions"><button className="primary-button" type="submit" disabled={isSaving}>{isSaving ? "Saving…" : editingEntryId ? "Update Entry" : `Save ${entry.type} Entry`}</button>{editingEntryId ? <button className="secondary-button" type="button" onClick={() => { setEntry(blankCashbookEntry()); setEditingEntryId(null); }}>Cancel Edit</button> : null}</div>
+            <label>Attach Bill <input type="file" accept={supportedUploadAccept} disabled={isUploadingBill} onChange={selectAttachment} /></label>
+            {isUploadingBill ? <p className="attachment-note">Uploading bill…</p> : null}{entry.attachment ? <p className="attachment-note">Attached: {entry.attachment.name}{editingEntryId ? " (kept unless you choose a replacement)" : ""}</p> : null}
+            <div className="modal-form-actions"><button className="primary-button" type="submit" disabled={isSaving || isUploadingBill}>{isUploadingBill ? "Uploading Bill…" : isSaving ? "Saving…" : editingEntryId ? "Update Entry" : `Save ${entry.type} Entry`}</button>{editingEntryId ? <button className="secondary-button" type="button" onClick={() => { setEntry(blankCashbookEntry()); setEditingEntryId(null); }}>Cancel Edit</button> : null}</div>
           </form>
         </div>
       </Panel>
