@@ -235,10 +235,15 @@ async function getPortalState() {
     } catch (error) {
       console.error("MongoDB cashbook read failed; using portalState cashbook fallback:", error.message);
     }
-    if (!cashbook.length && !normalizedPortal.cashbookRecoveryApplied) {
+    if (!normalizedPortal.cashbookRecoveryApplied) {
       const now = new Date().toISOString();
-      const restoredEntries = cashbookRecoveryEntries.map((entry) => ({ ...entry, createdBy: "Cashbook recovery", createdAt: now, updatedAt: now, attachment: null }));
-      await Promise.all(restoredEntries.map((entry) => {
+      const existingRecoveryIds = new Set(cashbook.map((entry) => String(entry.id || "")));
+      const entryKey = (entry) => `${entry.date}|${entry.type}|${Number(entry.amount || 0)}|${String(entry.description || "").trim().toLowerCase()}`;
+      const existingEntryKeys = new Set(cashbook.map(entryKey));
+      const missingEntries = cashbookRecoveryEntries
+        .filter((entry) => !existingRecoveryIds.has(entry.id) && !existingEntryKeys.has(entryKey(entry)))
+        .map((entry) => ({ ...entry, createdBy: "Cashbook recovery", createdAt: now, updatedAt: now, attachment: null }));
+      await Promise.all(missingEntries.map((entry) => {
         const { createdAt, ...entryUpdate } = entry;
         return models.Cashbook.updateOne(
           { id: entry.id },
@@ -246,9 +251,9 @@ async function getPortalState() {
           { upsert: true }
         );
       }));
-      normalizedPortal = { ...normalizedPortal, cashbook: restoredEntries, cashbookCollectionEnabled: true, cashbookRecoveryApplied: true };
+      cashbook = mergeCashbookRecords(cashbook, missingEntries);
+      normalizedPortal = { ...normalizedPortal, cashbook, cashbookCollectionEnabled: true, cashbookRecoveryApplied: true };
       await writePortalDocument(models, normalizedPortal);
-      cashbook = restoredEntries;
     }
     try {
       const leaveDocuments = models.Leave
