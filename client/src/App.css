@@ -650,6 +650,20 @@ button:disabled {
     min-height: 320px;
     overflow: visible;
   }
+
+  /* The report replaces the Cashbook card. Keep its left menu fixed and let
+     the report content itself scroll through every date and entry row. */
+  .cashbook-workspace .cashbook-report-page {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+  }
+
+  .cashbook-workspace .cashbook-report-content {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
 }
 
 .cashbook-report-page {
