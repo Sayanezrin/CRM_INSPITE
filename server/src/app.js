@@ -1014,12 +1014,16 @@ async function deleteLoginRecord(id) {
   const loginId = String(id);
   const portal = await getRecoveredPortalState();
   const login = (portal.logins || []).find((item) => String(item.id) === loginId);
-  if (!login) return;
-  const email = String(login.email || "").trim().toLowerCase();
+  const emailFromGeneratedId = loginId.startsWith("LOGIN-") ? loginId.slice("LOGIN-".length) : "";
+  const email = String(login?.email || emailFromGeneratedId || "").trim().toLowerCase();
+  if (!login && !email) return;
   if (email) await models.PortalUser.deleteOne({ email });
   await writePortalDocument(models, {
     ...portal,
-    logins: (portal.logins || []).filter((item) => String(item.id) !== loginId)
+    logins: (portal.logins || []).filter((item) => (
+      String(item.id) !== loginId
+      && String(item.email || "").trim().toLowerCase() !== email
+    ))
   });
 }
 

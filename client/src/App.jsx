@@ -898,14 +898,17 @@ function App() {
 
     const applyPortalPayload = (payload) => {
       const localPayload = readState();
-      const nextPayload = ensureEmployeeProfilesForLogins({
-        ...seedState,
-        ...localPayload,
-        ...payload,
-        logins: mergeRecordsByIdOrEmail(localPayload.logins || [], payload.logins || []),
-        employees: mergeRecordsByIdOrEmail(localPayload.employees || [], payload.employees || []),
-        attendance: mergeAttendanceRecords(localPayload.attendance || [], payload.attendance || [])
-      });
+        const nextPayload = ensureEmployeeProfilesForLogins({
+          ...seedState,
+          ...localPayload,
+          ...payload,
+          // Login access and employee profiles are shared MongoDB records.
+          // Do not merge an old browser cache into these lists, otherwise a
+          // just-deleted login can appear again after the next refresh.
+          logins: payload.logins || [],
+          employees: payload.employees || [],
+          attendance: mergeAttendanceRecords(localPayload.attendance || [], payload.attendance || [])
+        });
       setStore(nextPayload);
       writeState(nextPayload);
       return nextPayload;
