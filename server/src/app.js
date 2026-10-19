@@ -1126,19 +1126,26 @@ async function updateEmployeeRecord(previousId, record) {
   };
   const previousUser = oldEmail ? await models.PortalUser.findOne({ email: oldEmail }).lean() : null;
   if (oldEmail && oldEmail !== email) await models.PortalUser.deleteOne({ email: oldEmail });
+  // MongoDB cannot update the same path in both $set and $setOnInsert.
+  // Keep an existing user's password-change requirement, while assigning the
+  // default only when a profile is being linked to a new portal user.
+  const userSet = {
+    email,
+    name,
+    role: normalizeRole(updatedEmployee.accessRole),
+    status: updatedEmployee.status,
+    ...(previousUser?.passwordHash ? { passwordHash: previousUser.passwordHash } : {}),
+    ...(previousUser?.mustChangePassword !== undefined ? { mustChangePassword: previousUser.mustChangePassword } : {}),
+    updatedAt: new Date()
+  };
+  const userSetOnInsert = previousUser?.mustChangePassword !== undefined
+    ? {}
+    : { mustChangePassword: true };
   await models.PortalUser.updateOne(
     { email },
     {
-      $set: {
-        email,
-        name,
-        role: normalizeRole(updatedEmployee.accessRole),
-        status: updatedEmployee.status,
-        ...(previousUser?.passwordHash ? { passwordHash: previousUser.passwordHash } : {}),
-        ...(previousUser?.mustChangePassword !== undefined ? { mustChangePassword: previousUser.mustChangePassword } : {}),
-        updatedAt: new Date()
-      },
-      $setOnInsert: { mustChangePassword: true }
+      $set: userSet,
+      $setOnInsert: userSetOnInsert
     },
     { upsert: true }
   );
