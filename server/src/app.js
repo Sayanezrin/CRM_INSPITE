@@ -215,9 +215,12 @@ async function getPortalState() {
         ? await retryMongoOperation(() => models.Cashbook.find({}).sort({ date: -1, updatedAt: -1, _id: -1 }).lean())
         : [];
       const storedEntries = cashbookDocuments.map(toPortalCashbookRecord);
-      cashbook = normalizedPortal.cashbookCollectionEnabled
-        ? storedEntries
-        : mergeCashbookRecords(normalizedPortal.cashbook || [], storedEntries);
+      // The portal document is a recovery copy of the cashbook. Always merge
+      // it with the dedicated collection so a temporary empty/incomplete
+      // collection cannot make historical entries disappear from the UI.
+      // Direct delete operations remove an entry from both sources, so this
+      // does not revive a legitimately deleted transaction.
+      cashbook = mergeCashbookRecords(normalizedPortal.cashbook || [], storedEntries);
     } catch (error) {
       console.error("MongoDB cashbook read failed; using portalState cashbook fallback:", error.message);
     }
