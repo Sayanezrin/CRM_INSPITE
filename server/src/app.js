@@ -35,6 +35,17 @@ const emptyPortalState = {
   payslips: []
 };
 
+// Recovery records captured from the cashbook before its entries disappeared.
+// They are inserted only once, and only when both cashbook stores are empty.
+const cashbookRecoveryEntries = [
+  { id: "RECOVERY-20260909-TECHNICAL-SERVICE-FEE", type: "Out", amount: 9512.06, description: "Technical Service Fee", paymentMode: "Online", date: "2026-09-09" },
+  { id: "RECOVERY-20260630-PEAKAIR-INTERNET", type: "Out", amount: 4156, description: "PeakAir Internet", paymentMode: "Online", date: "2026-06-30" },
+  { id: "RECOVERY-20260626-JERRY-PRINTING", type: "Out", amount: 6699, description: "Jerry Printing shop - ID Cards", paymentMode: "Online", date: "2026-06-26" },
+  { id: "RECOVERY-20260625-BANK-CHARGE", type: "Out", amount: 53, description: "Bank Charge", paymentMode: "Online", date: "2026-06-25" },
+  { id: "RECOVERY-20260624-PRONTOTECH-EXPENSE", type: "Out", amount: 1760000, description: "Prontotech Expense - 260000, Thaufeek - 1000000, Jithesh - 500000", paymentMode: "Online", date: "2026-06-24" },
+  { id: "RECOVERY-20260624-ADVANCE-NCLIPS", type: "In", amount: 3771071, description: "Advance for Nclips AI and Retail AI Genuis", paymentMode: "Online", date: "2026-06-24" }
+];
+
 const employee = {
   id: 1,
   name: "SAYA NEZRIN",
@@ -223,6 +234,21 @@ async function getPortalState() {
       cashbook = mergeCashbookRecords(normalizedPortal.cashbook || [], storedEntries);
     } catch (error) {
       console.error("MongoDB cashbook read failed; using portalState cashbook fallback:", error.message);
+    }
+    if (!cashbook.length && !normalizedPortal.cashbookRecoveryApplied) {
+      const now = new Date().toISOString();
+      const restoredEntries = cashbookRecoveryEntries.map((entry) => ({ ...entry, createdBy: "Cashbook recovery", createdAt: now, updatedAt: now, attachment: null }));
+      await Promise.all(restoredEntries.map((entry) => {
+        const { createdAt, ...entryUpdate } = entry;
+        return models.Cashbook.updateOne(
+          { id: entry.id },
+          { $set: entryUpdate, $setOnInsert: { createdAt: createdAt || now } },
+          { upsert: true }
+        );
+      }));
+      normalizedPortal = { ...normalizedPortal, cashbook: restoredEntries, cashbookCollectionEnabled: true, cashbookRecoveryApplied: true };
+      await writePortalDocument(models, normalizedPortal);
+      cashbook = restoredEntries;
     }
     try {
       const leaveDocuments = models.Leave
