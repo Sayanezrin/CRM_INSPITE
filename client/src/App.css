@@ -664,6 +664,15 @@ button:disabled {
     overflow-y: auto;
     overscroll-behavior: contain;
   }
+
+  /* Before printing, let the complete PDF preview scroll inside the main
+     workspace so every report row can be reviewed. */
+  .cashbook-workspace .cashbook-print-page {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
 }
 
 .cashbook-report-page {
