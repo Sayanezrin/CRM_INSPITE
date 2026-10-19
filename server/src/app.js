@@ -944,20 +944,20 @@ async function createCashbookBackup(models, entries, reason = "manual") {
 
 async function deleteCashbookRecord(id) {
   const models = await getModels();
-  if (!models?.PortalState || !models?.Cashbook) {
+  if (!models?.Cashbook) {
     const error = new Error("MongoDB storage is required for cashbook entries.");
     error.status = 503;
     throw error;
   }
   const entryId = String(id);
-  const portal = await getRecoveredPortalState();
-  await createCashbookBackup(models, portal.cashbook || [], "before-delete");
+  const existing = await models.Cashbook.findOne({ id: entryId }).lean();
+  if (!existing) {
+    const error = new Error("Cashbook transaction was not found.");
+    error.status = 404;
+    throw error;
+  }
+  await createCashbookBackup(models, [toPortalCashbookRecord(existing)], "before-delete");
   await models.Cashbook.deleteOne({ id: entryId });
-  await writePortalDocument(models, {
-    ...portal,
-    cashbook: (portal.cashbook || []).filter((item) => String(item.id) !== entryId),
-    cashbookCollectionEnabled: true
-  });
 }
 
 async function saveLeaveRecord(record, session, { allowStatusUpdate = false } = {}) {
