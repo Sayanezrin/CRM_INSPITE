@@ -1826,13 +1826,19 @@ app.get("/api/cashbook", async (req, res, next) => {
     if (!models?.Cashbook) return res.status(503).json({ error: "MongoDB storage is required for cashbook entries." });
     const requestedPage = Number.parseInt(req.query.page, 10);
     const requestedLimit = Number.parseInt(req.query.limit, 10);
+    const requestedMonth = String(req.query.month || "").trim();
     const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
     const limit = Math.min(Number.isFinite(requestedLimit) && requestedLimit > 0 ? requestedLimit : 25, 100);
-    const total = await models.Cashbook.countDocuments({});
+    const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(requestedMonth) ? requestedMonth : "";
+    const filter = month ? { date: { $regex: `^${month}-` } } : {};
+    const [total, availableDates] = await Promise.all([
+      models.Cashbook.countDocuments(filter),
+      models.Cashbook.distinct("date")
+    ]);
     // Select only list-safe fields. Older entries may contain large legacy
     // attachment payloads or extra fields; returning those can make a Vercel
     // response fail even though the MongoDB query itself succeeds.
-    const entries = await models.Cashbook.find({}, {
+    const entries = await models.Cashbook.find(filter, {
       id: 1,
       type: 1,
       amount: 1,
@@ -1851,7 +1857,11 @@ app.get("/api/cashbook", async (req, res, next) => {
       .lean();
     // Do not return base64 bill files in the list response: hundreds of files
     // can exceed Vercel's response-size limit and hide the entire cashbook.
-    res.json({ total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)), entries: entries.map((entry) => ({
+    const months = [...new Set(availableDates
+      .map((date) => String(date || "").slice(0, 7))
+      .filter((date) => /^\d{4}-(0[1-9]|1[0-2])$/.test(date)))]
+      .sort((first, second) => second.localeCompare(first));
+    res.json({ total, page, limit, month, months, totalPages: Math.max(1, Math.ceil(total / limit)), entries: entries.map((entry) => ({
       ...toPortalCashbookRecord(entry),
       attachment: entry.attachment?.dataUrl ? { name: entry.attachment.name || "attachment", type: entry.attachment.type || "" } : null
     })) });
