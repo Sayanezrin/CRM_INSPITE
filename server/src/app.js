@@ -1829,7 +1829,22 @@ app.get("/api/cashbook", async (req, res, next) => {
     const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
     const limit = Math.min(Number.isFinite(requestedLimit) && requestedLimit > 0 ? requestedLimit : 25, 100);
     const total = await models.Cashbook.countDocuments({});
-    const entries = await models.Cashbook.find({})
+    // Select only list-safe fields. Older entries may contain large legacy
+    // attachment payloads or extra fields; returning those can make a Vercel
+    // response fail even though the MongoDB query itself succeeds.
+    const entries = await models.Cashbook.find({}, {
+      id: 1,
+      type: 1,
+      amount: 1,
+      description: 1,
+      paymentMode: 1,
+      date: 1,
+      createdBy: 1,
+      createdAt: 1,
+      updatedAt: 1,
+      "attachment.name": 1,
+      "attachment.type": 1
+    })
       .sort({ date: -1, updatedAt: -1, _id: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
