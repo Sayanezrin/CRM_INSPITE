@@ -1192,6 +1192,26 @@ function App() {
     }
   };
 
+  const deleteLoginAccess = async (loginId) => {
+    try {
+      await apiJson(`/api/logins/${encodeURIComponent(loginId)}`, { method: "DELETE" });
+      setStore((current) => {
+        const next = {
+          ...current,
+          logins: (current.logins || []).filter((item) => String(item.id) !== String(loginId))
+        };
+        writeState(next);
+        return next;
+      });
+      window.setTimeout(refreshPortalState, 250);
+      toast("Login access deleted.");
+      return true;
+    } catch (error) {
+      toast(error.message || "Login access could not be deleted. Please try again.", "error");
+      return false;
+    }
+  };
+
   const saveEmployeeProfile = async (previousId, employee) => {
     try {
       const saved = await apiJson(`/api/employees/${encodeURIComponent(previousId)}`, {
@@ -1237,7 +1257,7 @@ function App() {
       <main className="portal-main">
         <Header session={session} store={store} activePage={activePage} apiStatus={apiStatus} />
         {session.role === "employee" && <InstallAppNotice installPrompt={installPrompt} onPromptUsed={() => setInstallPrompt(null)} />}
-        <RolePage session={session} activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} saveCashbookEntry={saveCashbookEntry} deleteCashbookEntry={deleteCashbookEntry} saveLeaveRequest={saveLeaveRequest} updateLeaveStatus={updateLeaveStatus} deleteLeaveRequest={deleteLeaveRequest} deleteEmployeeProfile={deleteEmployeeProfile} saveEmployeeProfile={saveEmployeeProfile} onEmployeeProfileLoaded={applyEmployeeProfilePayload} apiStatus={apiStatus} />
+        <RolePage session={session} activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} saveCashbookEntry={saveCashbookEntry} deleteCashbookEntry={deleteCashbookEntry} saveLeaveRequest={saveLeaveRequest} updateLeaveStatus={updateLeaveStatus} deleteLeaveRequest={deleteLeaveRequest} deleteEmployeeProfile={deleteEmployeeProfile} deleteLoginAccess={deleteLoginAccess} saveEmployeeProfile={saveEmployeeProfile} onEmployeeProfileLoaded={applyEmployeeProfilePayload} apiStatus={apiStatus} />
       </main>
       <ToastHost />
     </div>
@@ -1521,14 +1541,14 @@ function Header({ session, store, activePage, apiStatus }) {
   );
 }
 
-function RolePage({ session, activePage, store, commit, commitAttendance, deleteAttendance, saveCashbookEntry, deleteCashbookEntry, saveLeaveRequest, updateLeaveStatus, deleteLeaveRequest, deleteEmployeeProfile, saveEmployeeProfile, onEmployeeProfileLoaded, apiStatus }) {
-  if (session.role === "admin") return <AdminPage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} saveCashbookEntry={saveCashbookEntry} deleteCashbookEntry={deleteCashbookEntry} updateLeaveStatus={updateLeaveStatus} deleteEmployeeProfile={deleteEmployeeProfile} saveEmployeeProfile={saveEmployeeProfile} session={session} apiStatus={apiStatus} />;
+function RolePage({ session, activePage, store, commit, commitAttendance, deleteAttendance, saveCashbookEntry, deleteCashbookEntry, saveLeaveRequest, updateLeaveStatus, deleteLeaveRequest, deleteEmployeeProfile, deleteLoginAccess, saveEmployeeProfile, onEmployeeProfileLoaded, apiStatus }) {
+  if (session.role === "admin") return <AdminPage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} saveCashbookEntry={saveCashbookEntry} deleteCashbookEntry={deleteCashbookEntry} updateLeaveStatus={updateLeaveStatus} deleteEmployeeProfile={deleteEmployeeProfile} deleteLoginAccess={deleteLoginAccess} saveEmployeeProfile={saveEmployeeProfile} session={session} apiStatus={apiStatus} />;
   if (session.role === "hr") return <HrPage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} saveCashbookEntry={saveCashbookEntry} deleteCashbookEntry={deleteCashbookEntry} updateLeaveStatus={updateLeaveStatus} saveEmployeeProfile={saveEmployeeProfile} session={session} apiStatus={apiStatus} />;
   return <EmployeePage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} saveLeaveRequest={saveLeaveRequest} deleteLeaveRequest={deleteLeaveRequest} session={session} onEmployeeProfileLoaded={onEmployeeProfileLoaded} apiStatus={apiStatus} />;
 }
 
-function AdminPage({ activePage, store, commit, commitAttendance, deleteAttendance, saveCashbookEntry, deleteCashbookEntry, updateLeaveStatus, deleteEmployeeProfile, saveEmployeeProfile, session, apiStatus }) {
-  if (activePage === "logins") return <DashboardGrid><AddLoginPanel commit={commit} /><LoginAccessTable logins={store.logins || []} commit={commit} className="full-row-panel" /></DashboardGrid>;
+function AdminPage({ activePage, store, commit, commitAttendance, deleteAttendance, saveCashbookEntry, deleteCashbookEntry, updateLeaveStatus, deleteEmployeeProfile, deleteLoginAccess, saveEmployeeProfile, session, apiStatus }) {
+  if (activePage === "logins") return <DashboardGrid><AddLoginPanel commit={commit} /><LoginAccessTable logins={store.logins || []} commit={commit} onDeleteLogin={deleteLoginAccess} className="full-row-panel" /></DashboardGrid>;
   if (activePage === "employees") return <DashboardGrid><AddEmployeePanel commit={commit} /><EmployeeTable employees={store.employees} commit={commit} onSaveEmployee={saveEmployeeProfile} onDeleteEmployee={deleteEmployeeProfile} canEdit canDelete className="full-row-panel" /></DashboardGrid>;
   if (activePage === "finance") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} createdBy="Admin" title="Add Debit Expense" /><FinancePanel store={store} commit={commit} canManage canExport className="full-row-panel" /></DashboardGrid>;
   if (activePage === "billing") return <BillingPage store={store} commit={commit} createdBy="Admin" />;
@@ -2977,7 +2997,7 @@ function AddLoginPanel({ commit }) {
   );
 }
 
-function LoginAccessTable({ logins, commit, className = "" }) {
+function LoginAccessTable({ logins, commit, onDeleteLogin, className = "" }) {
   const [editingLogin, setEditingLogin] = useState(null);
 
   const resetLoginPassword = async (login) => {
@@ -2997,12 +3017,8 @@ function LoginAccessTable({ logins, commit, className = "" }) {
   const deleteLogin = async (login) => {
     if (!window.confirm(`Delete login access for ${login.email}?`)) return;
     try {
-      await apiJson(`/api/logins/${encodeURIComponent(login.id)}`, { method: "DELETE" });
-      commit((current) => ({
-        ...current,
-        logins: (current.logins || []).filter((item) => item.id !== login.id)
-      }));
-      toast("Login access deleted.");
+      if (!onDeleteLogin) return;
+      await onDeleteLogin(login.id);
     } catch (error) {
       toast(error.message || "Login access could not be deleted. Please try again.", "error");
     }
