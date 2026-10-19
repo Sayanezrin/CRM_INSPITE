@@ -301,6 +301,23 @@ async function apiJson(path, options = {}) {
   return response.json();
 }
 
+async function apiFile(path) {
+  const session = readSession();
+  const response = await fetch(`${API_URL}${path}`, {
+    headers: session?.token ? { Authorization: `Bearer ${session.token}` } : {}
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    const error = new Error(payload.error || payload.detail || `API request failed: ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+  return {
+    file: await response.blob(),
+    name: decodeURIComponent(response.headers.get("X-Attachment-Name") || "attachment")
+  };
+}
+
 function urlBase64ToUint8Array(value) {
   const padded = `${value}${"=".repeat((4 - (value.length % 4)) % 4)}`.replace(/-/g, "+").replace(/_/g, "/");
   const raw = window.atob(padded);
@@ -2708,12 +2725,20 @@ function CashbookPage({ store, createdBy, onSaveEntry, onDeleteEntry }) {
 
   const viewBill = async (entryId) => {
     try {
-      const payload = await apiJson(`/api/cashbook/${encodeURIComponent(entryId)}/attachment`);
-      if (!payload?.attachment?.dataUrl) throw new Error("No bill is attached to this cashbook entry.");
-      setBillPreview(payload.attachment);
+      const payload = await apiFile(`/api/cashbook/${encodeURIComponent(entryId)}/attachment`);
+      if (!payload.file.size) throw new Error("No bill is attached to this cashbook entry.");
+      setBillPreview((current) => {
+        if (current?.objectUrl) URL.revokeObjectURL(current.dataUrl);
+        return { name: payload.name, type: payload.file.type || "application/octet-stream", dataUrl: URL.createObjectURL(payload.file), objectUrl: true };
+      });
     } catch (error) {
       toast(error.message || "The attached bill could not be opened.", "error");
     }
+  };
+
+  const closeBillPreview = () => {
+    if (billPreview?.objectUrl) URL.revokeObjectURL(billPreview.dataUrl);
+    setBillPreview(null);
   };
 
   if (reportOpen) return <CashbookReportPage entries={entries} onBack={() => setReportOpen(false)} />;
@@ -2756,7 +2781,7 @@ function CashbookPage({ store, createdBy, onSaveEntry, onDeleteEntry }) {
           </form>
         </div>
       </Panel>
-      {billPreview ? <div className="receipt-modal-backdrop" role="presentation" onClick={() => setBillPreview(null)}><section className="receipt-modal" role="dialog" aria-modal="true" aria-label={`Bill: ${billPreview.name}`} onClick={(event) => event.stopPropagation()}><header><div><h2>Attached Bill</h2><p>{billPreview.name}</p></div><button className="icon-action" type="button" aria-label="Close bill" onClick={() => setBillPreview(null)}>×</button></header><div className="receipt-preview-frame">{billPreview.type.startsWith("image/") ? <img src={billPreview.dataUrl} alt={billPreview.name} /> : <iframe title={billPreview.name} src={billPreview.dataUrl} />}</div><div className="modal-form-actions"><a className="secondary-button" href={billPreview.dataUrl} download={billPreview.name}>Download Bill</a><button className="primary-button" type="button" onClick={() => setBillPreview(null)}>Close</button></div></section></div> : null}
+      {billPreview ? <div className="receipt-modal-backdrop" role="presentation" onClick={closeBillPreview}><section className="receipt-modal" role="dialog" aria-modal="true" aria-label={`Bill: ${billPreview.name}`} onClick={(event) => event.stopPropagation()}><header><div><h2>Attached Bill</h2><p>{billPreview.name}</p></div><button className="icon-action" type="button" aria-label="Close bill" onClick={closeBillPreview}>×</button></header><div className="receipt-preview-frame">{billPreview.type.startsWith("image/") ? <img src={billPreview.dataUrl} alt={billPreview.name} /> : <iframe title={billPreview.name} src={billPreview.dataUrl} />}</div><div className="modal-form-actions"><a className="secondary-button" href={billPreview.dataUrl} download={billPreview.name}>Download Bill</a><button className="primary-button" type="button" onClick={closeBillPreview}>Close</button></div></section></div> : null}
       {reportOpen ? <div className="receipt-modal-backdrop" role="presentation" onClick={() => setReportOpen(false)}><section className="receipt-modal cashbook-report-modal" role="dialog" aria-modal="true" aria-label="Cashbook report" onClick={(event) => event.stopPropagation()}><header><div><h2>Cashbook Report</h2><p>Review transactions and download the selected period.</p></div><button className="icon-action" type="button" onClick={() => setReportOpen(false)}>×</button></header><div className="cashbook-filters"><label>From<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label><label>To<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label></div><div className="cashbook-summary"><Metric label="Total In" value={moneyInr(cashbookTotals(reportEntries).in)} /><Metric label="Total Out" value={moneyInr(cashbookTotals(reportEntries).out)} /><Metric label="Net Balance" value={moneyInr(cashbookTotals(reportEntries).in - cashbookTotals(reportEntries).out)} /></div><div className="modal-form-actions"><button className="secondary-button" type="button" onClick={downloadReport}>Download Excel</button><button className="primary-button" type="button" onClick={printReport}>Print / Save PDF</button></div></section></div> : null}
     </DashboardGrid>
   );

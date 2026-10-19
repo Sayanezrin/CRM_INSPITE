@@ -1924,16 +1924,24 @@ app.get("/api/cashbook/:id/attachment", async (req, res, next) => {
     if (req.session.role !== "admin" && req.session.role !== "hr") return res.status(403).json({ error: "Only Admin or HR can view cashbook bills." });
     const models = await getModels();
     if (!models?.Cashbook) return res.status(503).json({ error: "MongoDB storage is required for cashbook bills." });
-    const entry = await models.Cashbook.findOne({ id: String(req.params.id) }, { attachment: 1 }).lean();
+    const entry = await retryMongoOperation(() => (
+      models.Cashbook.findOne({ id: String(req.params.id) }, { attachment: 1 }).lean()
+    ));
     const attachment = entry?.attachment;
     if (!attachment?.dataUrl) return res.status(404).json({ error: "No bill is attached to this cashbook entry." });
-    res.json({
-      attachment: {
-        name: String(attachment.name || "attachment").slice(0, 180),
-        type: String(attachment.type || "").slice(0, 120),
-        dataUrl: String(attachment.dataUrl)
-      }
+    const dataUrl = String(attachment.dataUrl);
+    const match = dataUrl.match(/^data:([^;,]+)?(?:;charset=[^;,]+)?;base64,([A-Za-z0-9+/=\s]+)$/i);
+    if (!match) return res.status(422).json({ error: "This attached bill has an unsupported file format." });
+    const file = Buffer.from(match[2].replace(/\s/g, ""), "base64");
+    if (!file.length) return res.status(422).json({ error: "This attached bill is empty." });
+    const fileName = String(attachment.name || "attachment").slice(0, 180).replace(/[\r\n"]/g, "_");
+    const contentType = String(attachment.type || match[1] || "application/octet-stream").slice(0, 120);
+    res.set({
+      "Cache-Control": "private, max-age=300",
+      "Content-Disposition": `inline; filename="${fileName}"`,
+      "X-Attachment-Name": encodeURIComponent(fileName)
     });
+    res.type(contentType).send(file);
   } catch (error) {
     next(error);
   }
