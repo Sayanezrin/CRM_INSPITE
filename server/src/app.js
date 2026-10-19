@@ -1027,6 +1027,51 @@ async function saveLeaveRecord(record, session, { allowStatusUpdate = false } = 
   return savedRecord;
 }
 
+async function updateLeaveStatusRecord(id, status) {
+  const models = await getModels();
+  if (!models?.Leave) {
+    const error = new Error("MongoDB storage is required for leave requests.");
+    error.status = 503;
+    throw error;
+  }
+
+  const leaveId = String(id || "");
+  const nextStatus = String(status || "");
+  if (!leaveId || !["Approved", "Rejected"].includes(nextStatus)) {
+    const error = new Error("Choose Approved or Rejected for this leave request.");
+    error.status = 400;
+    throw error;
+  }
+
+  // Update the dedicated leave document directly. This avoids rewriting every
+  // historical leave and avoids depending on a legacy portal-state snapshot.
+  let existing = await models.Leave.findOne({ id: leaveId }).lean();
+  if (!existing) {
+    const portal = await getRecoveredPortalState();
+    existing = (portal.leaves || []).find((leave) => String(leave.id) === leaveId) || null;
+  }
+  if (!existing) {
+    const error = new Error("Leave request was not found.");
+    error.status = 404;
+    throw error;
+  }
+
+  const now = new Date().toISOString();
+  const savedRecord = {
+    ...toPortalLeaveRecord(existing),
+    id: leaveId,
+    status: nextStatus,
+    updatedAt: now
+  };
+  const { createdAt, ...leaveUpdate } = savedRecord;
+  await models.Leave.updateOne(
+    { id: leaveId },
+    { $set: leaveUpdate, $setOnInsert: { createdAt: createdAt || now } },
+    { upsert: true }
+  );
+  return savedRecord;
+}
+
 async function deleteLeaveRecord(id, session) {
   const models = await getModels();
   if (!models?.PortalState || !models?.Leave) {
@@ -1930,7 +1975,7 @@ app.post("/api/leaves", async (req, res, next) => {
 app.patch("/api/leaves/:id", async (req, res, next) => {
   try {
     if (req.session.role !== "admin" && req.session.role !== "hr") return res.status(403).json({ error: "Only Admin or HR can approve leave requests." });
-    res.json(await saveLeaveRecord({ ...req.body, id: req.params.id }, req.session, { allowStatusUpdate: true }));
+    res.json(await updateLeaveStatusRecord(req.params.id, req.body?.status));
   } catch (error) {
     next(error);
   }
