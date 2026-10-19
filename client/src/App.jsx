@@ -2577,6 +2577,15 @@ function CashbookPage({ store, createdBy, onSaveEntry, onDeleteEntry }) {
   const allTotals = cashbookTotals(entries);
   const todayTotals = cashbookTotals(entries.filter((item) => item.date === today()));
 
+  const backupEntries = async () => {
+    try {
+      const result = await apiJson("/api/cashbook/backup", { method: "POST" });
+      toast(result.count ? `${result.count} cashbook entries backed up securely.` : "There are no cashbook entries to back up yet.");
+    } catch (error) {
+      toast(error.message || "Cashbook backup could not be created. Please try again.", "error");
+    }
+  };
+
   const addEntry = async (event) => {
     event.preventDefault();
     if (!Number(entry.amount) || !String(entry.description).trim()) {
@@ -2637,6 +2646,7 @@ function CashbookPage({ store, createdBy, onSaveEntry, onDeleteEntry }) {
           <Metric label="Total Balance" value={moneyInr(allTotals.in - allTotals.out)} />
           <Metric label="Today's Balance" value={moneyInr(todayTotals.in - todayTotals.out)} />
           <button type="button" className="secondary-button" onClick={() => setReportOpen(true)}>View Report</button>
+          <button type="button" className="secondary-button" onClick={backupEntries}>Back Up Entries</button>
         </div>
         <div className="cashbook-filters">
           <label>Date<input type="date" value={filterDate} onChange={(event) => setFilterDate(event.target.value)} /></label>

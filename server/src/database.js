@@ -201,6 +201,14 @@ function createModels(connection) {
     updatedAt: Date
   }, { collection: "cashbookEntries", versionKey: false, strict: false });
 
+  const cashbookBackupSchema = new mongoose.Schema({
+    snapshotId: { type: String, index: true },
+    entryId: { type: String, index: true },
+    entry: mongoose.Schema.Types.Mixed,
+    reason: String,
+    createdAt: Date
+  }, { collection: "cashbookEntryBackups", versionKey: false, strict: false });
+
   const leaveSchema = new mongoose.Schema({
     id: { type: String, index: true, unique: true },
     employeeId: { type: String, index: true },
@@ -239,6 +247,7 @@ function createModels(connection) {
     Bill: connection.model("Bill", billSchema),
     Payslip: connection.model("Payslip", payslipSchema),
     Cashbook: connection.model("Cashbook", cashbookSchema),
+    CashbookBackup: connection.model("CashbookBackup", cashbookBackupSchema),
     Leave: connection.model("Leave", leaveSchema),
     PushSubscription: connection.model("PushSubscription", pushSubscriptionSchema)
   };

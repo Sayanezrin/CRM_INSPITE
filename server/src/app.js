@@ -899,7 +899,22 @@ async function saveCashbookRecord(record, session) {
     cashbook,
     cashbookCollectionEnabled: true
   });
+  await createCashbookBackup(models, cashbook, "after-save");
   return savedRecord;
+}
+
+async function createCashbookBackup(models, entries, reason = "manual") {
+  if (!models?.CashbookBackup || !Array.isArray(entries) || !entries.length) return { count: 0 };
+  const snapshotId = `CB-${new Date().toISOString().replace(/[^0-9]/g, "")}-${crypto.randomUUID()}`;
+  const createdAt = new Date();
+  await models.CashbookBackup.insertMany(entries.map((entry) => ({
+    snapshotId,
+    entryId: String(entry.id || ""),
+    entry: toPortalCashbookRecord(entry),
+    reason,
+    createdAt
+  })));
+  return { snapshotId, count: entries.length };
 }
 
 async function deleteCashbookRecord(id) {
@@ -911,6 +926,7 @@ async function deleteCashbookRecord(id) {
   }
   const entryId = String(id);
   const portal = await getRecoveredPortalState();
+  await createCashbookBackup(models, portal.cashbook || [], "before-delete");
   await models.Cashbook.deleteOne({ id: entryId });
   await writePortalDocument(models, {
     ...portal,
@@ -1795,6 +1811,18 @@ app.delete("/api/cashbook/:id", async (req, res, next) => {
     if (req.session.role !== "admin" && req.session.role !== "hr") return res.status(403).json({ error: "Only Admin or Accountant can delete cashbook entries." });
     await deleteCashbookRecord(req.params.id);
     res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/cashbook/backup", async (req, res, next) => {
+  try {
+    if (req.session.role !== "admin" && req.session.role !== "hr") return res.status(403).json({ error: "Only Admin or Accountant can back up cashbook entries." });
+    const models = await getModels();
+    if (!models?.CashbookBackup) return res.status(503).json({ error: "MongoDB storage is required for cashbook backups." });
+    const portal = await getRecoveredPortalState();
+    res.status(201).json(await createCashbookBackup(models, portal.cashbook || [], "manual"));
   } catch (error) {
     next(error);
   }
