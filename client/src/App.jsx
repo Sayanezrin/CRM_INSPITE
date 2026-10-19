@@ -1192,6 +1192,37 @@ function App() {
     }
   };
 
+  const saveEmployeeProfile = async (previousId, employee) => {
+    try {
+      const saved = await apiJson(`/api/employees/${encodeURIComponent(previousId)}`, {
+        method: "PUT",
+        body: JSON.stringify(employee)
+      });
+      const savedEmployee = saved.employee;
+      const savedLogin = saved.login;
+      setStore((current) => {
+        const next = {
+          ...current,
+          employees: (current.employees || []).map((item) => String(item.id) === String(previousId) ? savedEmployee : item),
+          logins: [savedLogin, ...(current.logins || []).filter((item) => String(item.id) !== String(savedLogin.id) && String(item.employeeId) !== String(previousId) && String(item.email || "").trim().toLowerCase() !== String(savedLogin.email || "").trim().toLowerCase())],
+          leaves: (current.leaves || []).map((item) => String(item.employeeId) === String(previousId) ? { ...item, employeeId: savedEmployee.id, employeeName: savedEmployee.name } : item),
+          expenses: (current.expenses || []).map((item) => String(item.employeeId) === String(previousId) ? { ...item, employeeId: savedEmployee.id, employeeName: savedEmployee.name } : item),
+          attendance: (current.attendance || []).map((item) => String(item.employeeId) === String(previousId) ? { ...item, employeeId: savedEmployee.id, employeeName: savedEmployee.name, userEmail: savedEmployee.email } : item),
+          tasks: (current.tasks || []).map((item) => String(item.employeeId) === String(previousId) ? { ...item, employeeId: savedEmployee.id, employeeName: savedEmployee.name, employeeEmail: savedEmployee.email } : item),
+          payslips: (current.payslips || []).map((item) => String(item.employeeId) === String(previousId) ? { ...item, employeeId: savedEmployee.id, employeeName: savedEmployee.name, employeeEmail: savedEmployee.email } : item)
+        };
+        writeState(next);
+        return next;
+      });
+      window.setTimeout(refreshPortalState, 250);
+      toast("Employee profile updated.");
+      return true;
+    } catch (error) {
+      toast(error.message || "Employee details were not saved to MongoDB. Please try again.", "error");
+      return false;
+    }
+  };
+
   if (!session) {
     return <><LoginScreen store={store} onLogin={(nextSession) => { writeSession(nextSession); setSession(nextSession); setActivePage("home"); }} /><ToastHost /></>;
   }
@@ -1206,7 +1237,7 @@ function App() {
       <main className="portal-main">
         <Header session={session} store={store} activePage={activePage} apiStatus={apiStatus} />
         {session.role === "employee" && <InstallAppNotice installPrompt={installPrompt} onPromptUsed={() => setInstallPrompt(null)} />}
-        <RolePage session={session} activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} saveCashbookEntry={saveCashbookEntry} deleteCashbookEntry={deleteCashbookEntry} saveLeaveRequest={saveLeaveRequest} updateLeaveStatus={updateLeaveStatus} deleteLeaveRequest={deleteLeaveRequest} deleteEmployeeProfile={deleteEmployeeProfile} onEmployeeProfileLoaded={applyEmployeeProfilePayload} apiStatus={apiStatus} />
+        <RolePage session={session} activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} saveCashbookEntry={saveCashbookEntry} deleteCashbookEntry={deleteCashbookEntry} saveLeaveRequest={saveLeaveRequest} updateLeaveStatus={updateLeaveStatus} deleteLeaveRequest={deleteLeaveRequest} deleteEmployeeProfile={deleteEmployeeProfile} saveEmployeeProfile={saveEmployeeProfile} onEmployeeProfileLoaded={applyEmployeeProfilePayload} apiStatus={apiStatus} />
       </main>
       <ToastHost />
     </div>
@@ -1490,15 +1521,15 @@ function Header({ session, store, activePage, apiStatus }) {
   );
 }
 
-function RolePage({ session, activePage, store, commit, commitAttendance, deleteAttendance, saveCashbookEntry, deleteCashbookEntry, saveLeaveRequest, updateLeaveStatus, deleteLeaveRequest, deleteEmployeeProfile, onEmployeeProfileLoaded, apiStatus }) {
-  if (session.role === "admin") return <AdminPage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} saveCashbookEntry={saveCashbookEntry} deleteCashbookEntry={deleteCashbookEntry} updateLeaveStatus={updateLeaveStatus} deleteEmployeeProfile={deleteEmployeeProfile} session={session} apiStatus={apiStatus} />;
-  if (session.role === "hr") return <HrPage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} saveCashbookEntry={saveCashbookEntry} deleteCashbookEntry={deleteCashbookEntry} updateLeaveStatus={updateLeaveStatus} session={session} apiStatus={apiStatus} />;
+function RolePage({ session, activePage, store, commit, commitAttendance, deleteAttendance, saveCashbookEntry, deleteCashbookEntry, saveLeaveRequest, updateLeaveStatus, deleteLeaveRequest, deleteEmployeeProfile, saveEmployeeProfile, onEmployeeProfileLoaded, apiStatus }) {
+  if (session.role === "admin") return <AdminPage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} saveCashbookEntry={saveCashbookEntry} deleteCashbookEntry={deleteCashbookEntry} updateLeaveStatus={updateLeaveStatus} deleteEmployeeProfile={deleteEmployeeProfile} saveEmployeeProfile={saveEmployeeProfile} session={session} apiStatus={apiStatus} />;
+  if (session.role === "hr") return <HrPage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} saveCashbookEntry={saveCashbookEntry} deleteCashbookEntry={deleteCashbookEntry} updateLeaveStatus={updateLeaveStatus} saveEmployeeProfile={saveEmployeeProfile} session={session} apiStatus={apiStatus} />;
   return <EmployeePage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} saveLeaveRequest={saveLeaveRequest} deleteLeaveRequest={deleteLeaveRequest} session={session} onEmployeeProfileLoaded={onEmployeeProfileLoaded} apiStatus={apiStatus} />;
 }
 
-function AdminPage({ activePage, store, commit, commitAttendance, deleteAttendance, saveCashbookEntry, deleteCashbookEntry, updateLeaveStatus, deleteEmployeeProfile, session, apiStatus }) {
+function AdminPage({ activePage, store, commit, commitAttendance, deleteAttendance, saveCashbookEntry, deleteCashbookEntry, updateLeaveStatus, deleteEmployeeProfile, saveEmployeeProfile, session, apiStatus }) {
   if (activePage === "logins") return <DashboardGrid><AddLoginPanel commit={commit} /><LoginAccessTable logins={store.logins || []} commit={commit} className="full-row-panel" /></DashboardGrid>;
-  if (activePage === "employees") return <DashboardGrid><AddEmployeePanel commit={commit} /><EmployeeTable employees={store.employees} commit={commit} onDeleteEmployee={deleteEmployeeProfile} canEdit canDelete className="full-row-panel" /></DashboardGrid>;
+  if (activePage === "employees") return <DashboardGrid><AddEmployeePanel commit={commit} /><EmployeeTable employees={store.employees} commit={commit} onSaveEmployee={saveEmployeeProfile} onDeleteEmployee={deleteEmployeeProfile} canEdit canDelete className="full-row-panel" /></DashboardGrid>;
   if (activePage === "finance") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} createdBy="Admin" title="Add Debit Expense" /><FinancePanel store={store} commit={commit} canManage canExport className="full-row-panel" /></DashboardGrid>;
   if (activePage === "billing") return <BillingPage store={store} commit={commit} createdBy="Admin" />;
   if (activePage === "cashbook") return <CashbookPage store={store} createdBy="Admin" onSaveEntry={saveCashbookEntry} onDeleteEntry={deleteCashbookEntry} />;
@@ -1510,8 +1541,8 @@ function AdminPage({ activePage, store, commit, commitAttendance, deleteAttendan
   return <AdminHome store={store} commit={commit} onLeaveStatusChange={updateLeaveStatus} />;
 }
 
-function HrPage({ activePage, store, commit, commitAttendance, deleteAttendance, saveCashbookEntry, deleteCashbookEntry, updateLeaveStatus, session, apiStatus }) {
-  if (activePage === "employees") return <DashboardGrid><EmployeeTable employees={store.employees} commit={commit} canEdit /></DashboardGrid>;
+function HrPage({ activePage, store, commit, commitAttendance, deleteAttendance, saveCashbookEntry, deleteCashbookEntry, updateLeaveStatus, saveEmployeeProfile, session, apiStatus }) {
+  if (activePage === "employees") return <DashboardGrid><EmployeeTable employees={store.employees} commit={commit} onSaveEmployee={saveEmployeeProfile} canEdit /></DashboardGrid>;
   if (activePage === "leave") return <DashboardGrid><ApprovalPanel title="Leave Applications" items={store.leaves} kind="leaves" commit={commit} onLeaveStatusChange={updateLeaveStatus} /><LeaveTable leaves={store.leaves} /></DashboardGrid>;
   if (activePage === "expenses") return <DashboardGrid><ApprovalPanel title="Expense Approval Queue" items={store.expenses} kind="expenses" commit={commit} /><ExpenseTable expenses={store.expenses} /></DashboardGrid>;
   if (activePage === "attendance") return <AttendancePage store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} session={session} />;
@@ -3593,7 +3624,7 @@ function Metric({ label, value, className = "" }) {
 
 const employeeColumns = ["id", "name", "email", "accessRole", "department", "role", "salary", "joinedAt", "birthday", "bloodGroup", "mobile", "alternativeNumber", "aadhaar", "pan", "uan", "experience", "qualification", "college", "address", "status"];
 
-function EmployeeTable({ employees, commit, onDeleteEmployee, canEdit = false, canDelete = false, className = "" }) {
+function EmployeeTable({ employees, commit, onSaveEmployee, onDeleteEmployee, canEdit = false, canDelete = false, className = "" }) {
   const [editingEmployee, setEditingEmployee] = useState(null);
 
   const deleteEmployee = async (employeeId) => {
@@ -3603,63 +3634,16 @@ function EmployeeTable({ employees, commit, onDeleteEmployee, canEdit = false, c
     await onDeleteEmployee(employeeId);
   };
 
-  const updateEmployee = (updatedEmployee) => {
-    if (!canEdit || !commit || !editingEmployee) return;
+  const updateEmployee = async (updatedEmployee) => {
+    if (!canEdit || !onSaveEmployee || !editingEmployee) return;
     const previousId = editingEmployee.id;
     const nextId = updatedEmployee.id;
-    const previousEmail = editingEmployee.email?.toLowerCase();
-    const nextEmail = updatedEmployee.email?.toLowerCase();
     if (employees.some((employee) => employee.id !== previousId && String(employee.id) === String(nextId))) {
       toast("Another employee already uses this ID.", "error");
       return;
     }
-
-    commit((current) => {
-      const existingLogin = (current.logins || []).find((login) => (
-        login.employeeId === previousId ||
-        login.employeeId === nextId ||
-        login.email?.toLowerCase() === previousEmail ||
-        login.email?.toLowerCase() === nextEmail
-      ));
-
-      const syncedLogin = {
-        id: existingLogin?.id || uid("LOGIN"),
-        name: updatedEmployee.name,
-        email: updatedEmployee.email,
-        accessRole: updatedEmployee.accessRole,
-        employeeId: updatedEmployee.id,
-        status: updatedEmployee.status || existingLogin?.status || "Active"
-      };
-
-      return {
-        ...current,
-        employees: (current.employees || []).map((employee) => (
-          employee.id === previousId ? updatedEmployee : employee
-        )),
-        leaves: (current.leaves || []).map((leave) => (
-          leave.employeeId === previousId ? { ...leave, employeeId: nextId, employeeName: updatedEmployee.name } : leave
-        )),
-        expenses: (current.expenses || []).map((expense) => (
-          expense.employeeId === previousId ? { ...expense, employeeId: nextId, employeeName: updatedEmployee.name } : expense
-        )),
-        attendance: (current.attendance || []).map((record) => (
-          record.employeeId === previousId ? { ...record, employeeId: nextId, employeeName: updatedEmployee.name } : record
-        )),
-        logins: [
-          syncedLogin,
-          ...(current.logins || []).filter((login) => (
-            login.id !== existingLogin?.id &&
-            login.employeeId !== previousId &&
-            login.employeeId !== updatedEmployee.id &&
-            login.email?.toLowerCase() !== previousEmail &&
-            login.email?.toLowerCase() !== nextEmail
-          ))
-        ]
-      };
-    });
-
-    setEditingEmployee(null);
-    toast("Employee profile updated.");
+    const saved = await onSaveEmployee(previousId, updatedEmployee);
+    if (saved) setEditingEmployee(null);
   };
 
   if (!canEdit) {

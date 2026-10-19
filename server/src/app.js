@@ -1059,6 +1059,99 @@ async function deleteEmployeeRecord(id) {
   await writePortalDocument(models, nextPortal);
 }
 
+async function updateEmployeeRecord(previousId, record) {
+  const models = await getModels();
+  if (!models?.PortalState || !models?.PortalUser) {
+    const error = new Error("MongoDB storage is required to update employees.");
+    error.status = 503;
+    throw error;
+  }
+  const portal = await getRecoveredPortalState();
+  const oldId = String(previousId);
+  const existing = (portal.employees || []).find((employee) => String(employee.id) === oldId);
+  if (!existing) {
+    const error = new Error("Employee was not found.");
+    error.status = 404;
+    throw error;
+  }
+  const employeeId = String(record?.id || oldId).trim();
+  const email = String(record?.email || existing.email || "").trim().toLowerCase();
+  const name = String(record?.name || "").trim();
+  if (!employeeId || !email || !name) {
+    const error = new Error("Employee ID, name, and email are required.");
+    error.status = 400;
+    throw error;
+  }
+  const duplicate = (portal.employees || []).find((employee) => String(employee.id) !== oldId && (String(employee.id) === employeeId || String(employee.email || "").trim().toLowerCase() === email));
+  if (duplicate) {
+    const error = new Error("Another employee already uses this ID or email.");
+    error.status = 409;
+    throw error;
+  }
+
+  const oldEmail = String(existing.email || "").trim().toLowerCase();
+  const linkedLogin = (portal.logins || []).find((login) => (
+    String(login.employeeId) === oldId || String(login.email || "").trim().toLowerCase() === oldEmail
+  ));
+  const updatedEmployee = {
+    ...existing,
+    ...record,
+    id: employeeId,
+    name,
+    email,
+    accessRole: normalizeRole(record?.accessRole || existing.accessRole),
+    department: String(record?.department || existing.department || "General").trim() || "General",
+    role: String(record?.role || existing.role || "Employee").trim() || "Employee",
+    salary: Number(record?.salary || 0),
+    status: record?.status || existing.status || "Active"
+  };
+  const syncedLogin = {
+    id: linkedLogin?.id || `LOGIN-${crypto.randomUUID()}`,
+    name,
+    email,
+    accessRole: updatedEmployee.accessRole,
+    employeeId,
+    status: updatedEmployee.status
+  };
+  const updateRelated = (item) => ({ ...item, employeeId, employeeName: name, ...(item.userEmail !== undefined ? { userEmail: email } : {}), ...(item.employeeEmail !== undefined ? { employeeEmail: email } : {}) });
+  const nextPortal = {
+    ...portal,
+    employees: (portal.employees || []).map((employee) => String(employee.id) === oldId ? updatedEmployee : employee),
+    logins: [syncedLogin, ...(portal.logins || []).filter((login) => String(login.id) !== String(linkedLogin?.id) && String(login.employeeId) !== oldId && String(login.email || "").trim().toLowerCase() !== oldEmail && String(login.email || "").trim().toLowerCase() !== email)],
+    leaves: (portal.leaves || []).map((leave) => String(leave.employeeId) === oldId ? updateRelated(leave) : leave),
+    expenses: (portal.expenses || []).map((expense) => String(expense.employeeId) === oldId ? updateRelated(expense) : expense),
+    attendance: (portal.attendance || []).map((attendance) => String(attendance.employeeId) === oldId ? updateRelated(attendance) : attendance),
+    tasks: (portal.tasks || []).map((task) => String(task.employeeId) === oldId ? updateRelated(task) : task),
+    payslips: (portal.payslips || []).map((payslip) => String(payslip.employeeId) === oldId ? updateRelated(payslip) : payslip)
+  };
+  const previousUser = oldEmail ? await models.PortalUser.findOne({ email: oldEmail }).lean() : null;
+  if (oldEmail && oldEmail !== email) await models.PortalUser.deleteOne({ email: oldEmail });
+  await models.PortalUser.updateOne(
+    { email },
+    {
+      $set: {
+        email,
+        name,
+        role: normalizeRole(updatedEmployee.accessRole),
+        status: updatedEmployee.status,
+        ...(previousUser?.passwordHash ? { passwordHash: previousUser.passwordHash } : {}),
+        ...(previousUser?.mustChangePassword !== undefined ? { mustChangePassword: previousUser.mustChangePassword } : {}),
+        updatedAt: new Date()
+      },
+      $setOnInsert: { mustChangePassword: true }
+    },
+    { upsert: true }
+  );
+  await Promise.all([
+    models.Attendance?.updateMany({ employeeId: oldId }, { $set: { employeeId, employeeName: name, userName: name, userEmail: email } }),
+    models.Task?.updateMany({ employeeId: oldId }, { $set: { employeeId, employeeName: name, employeeEmail: email } }),
+    models.Payslip?.updateMany({ employeeId: oldId }, { $set: { employeeId, employeeName: name, employeeEmail: email, employeeRole: updatedEmployee.role, department: updatedEmployee.department } }),
+    models.Leave?.updateMany({ employeeId: oldId }, { $set: { employeeId, employeeName: name } })
+  ].filter(Boolean));
+  await writePortalDocument(models, nextPortal);
+  return { employee: updatedEmployee, login: syncedLogin };
+}
+
 function isTaskOwnedBySession(task, session) {
   const ownerEmail = String(task?.employeeEmail || "").trim().toLowerCase();
   const sessionEmail = String(session?.email || "").trim().toLowerCase();
@@ -1734,6 +1827,15 @@ app.delete("/api/employees/:id", async (req, res, next) => {
     if (req.session.role !== "admin") return res.status(403).json({ error: "Only Admin can delete employees." });
     await deleteEmployeeRecord(req.params.id);
     res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put("/api/employees/:id", async (req, res, next) => {
+  try {
+    if (req.session.role !== "admin" && req.session.role !== "hr") return res.status(403).json({ error: "Only Admin or HR can update employee details." });
+    res.json(await updateEmployeeRecord(req.params.id, req.body));
   } catch (error) {
     next(error);
   }
