@@ -1911,6 +1911,26 @@ app.get("/api/cashbook", async (req, res, next) => {
   }
 });
 
+app.get("/api/cashbook/:id/attachment", async (req, res, next) => {
+  try {
+    if (req.session.role !== "admin" && req.session.role !== "hr") return res.status(403).json({ error: "Only Admin or HR can view cashbook bills." });
+    const models = await getModels();
+    if (!models?.Cashbook) return res.status(503).json({ error: "MongoDB storage is required for cashbook bills." });
+    const entry = await models.Cashbook.findOne({ id: String(req.params.id) }, { attachment: 1 }).lean();
+    const attachment = entry?.attachment;
+    if (!attachment?.dataUrl) return res.status(404).json({ error: "No bill is attached to this cashbook entry." });
+    res.json({
+      attachment: {
+        name: String(attachment.name || "attachment").slice(0, 180),
+        type: String(attachment.type || "").slice(0, 120),
+        dataUrl: String(attachment.dataUrl)
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/api/cashbook", async (req, res, next) => {
   try {
     if (req.session.role !== "admin" && req.session.role !== "hr") return res.status(403).json({ error: "Only Admin or Accountant can add cashbook entries." });

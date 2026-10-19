@@ -2600,6 +2600,7 @@ function CashbookPage({ store, createdBy, onSaveEntry, onDeleteEntry }) {
   const [pageData, setPageData] = useState(null);
   const [pageError, setPageError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
+  const [billPreview, setBillPreview] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -2705,6 +2706,16 @@ function CashbookPage({ store, createdBy, onSaveEntry, onDeleteEntry }) {
     setEditingEntryId(item.id);
   };
 
+  const viewBill = async (entryId) => {
+    try {
+      const payload = await apiJson(`/api/cashbook/${encodeURIComponent(entryId)}/attachment`);
+      if (!payload?.attachment?.dataUrl) throw new Error("No bill is attached to this cashbook entry.");
+      setBillPreview(payload.attachment);
+    } catch (error) {
+      toast(error.message || "The attached bill could not be opened.", "error");
+    }
+  };
+
   if (reportOpen) return <CashbookReportPage entries={entries} onBack={() => setReportOpen(false)} />;
 
   return (
@@ -2729,7 +2740,7 @@ function CashbookPage({ store, createdBy, onSaveEntry, onDeleteEntry }) {
             {filteredEntries.length ? filteredEntries.map((item) => <article className="cashbook-entry" key={item.id}>
               <div><strong>{item.description}</strong><span>{billDate(item.date)} · {item.paymentMode}{item.attachment?.dataUrl ? " · Bill attached" : ""}</span></div>
               <strong className={item.type === "In" ? "cash-in" : "cash-out"}>{item.type === "In" ? "+" : "−"}{moneyInr(item.amount)}</strong>
-              <div className="cashbook-entry-actions"><button className="table-action" type="button" onClick={() => editEntry(item)}>Edit</button>{item.attachment?.dataUrl ? <a className="table-action" href={item.attachment.dataUrl} target="_blank" rel="noreferrer">Bill</a> : null}<button className="icon-action danger" type="button" title="Delete transaction" onClick={() => deleteEntry(item.id)}>×</button></div>
+              <div className="cashbook-entry-actions"><button className="table-action" type="button" onClick={() => editEntry(item)}>Edit</button>{item.attachment?.name ? <button className="table-action" type="button" onClick={() => viewBill(item.id)}>View Bill</button> : null}<button className="icon-action danger" type="button" title="Delete transaction" onClick={() => deleteEntry(item.id)}>×</button></div>
             </article>) : <p className="empty-note">No cashbook transactions found.</p>}
           </div>
           <form className="cashbook-entry-form" onSubmit={addEntry}>
@@ -2745,6 +2756,7 @@ function CashbookPage({ store, createdBy, onSaveEntry, onDeleteEntry }) {
           </form>
         </div>
       </Panel>
+      {billPreview ? <div className="receipt-modal-backdrop" role="presentation" onClick={() => setBillPreview(null)}><section className="receipt-modal" role="dialog" aria-modal="true" aria-label={`Bill: ${billPreview.name}`} onClick={(event) => event.stopPropagation()}><header><div><h2>Attached Bill</h2><p>{billPreview.name}</p></div><button className="icon-action" type="button" aria-label="Close bill" onClick={() => setBillPreview(null)}>×</button></header><div className="receipt-preview-frame">{billPreview.type.startsWith("image/") ? <img src={billPreview.dataUrl} alt={billPreview.name} /> : <iframe title={billPreview.name} src={billPreview.dataUrl} />}</div><div className="modal-form-actions"><a className="secondary-button" href={billPreview.dataUrl} download={billPreview.name}>Download Bill</a><button className="primary-button" type="button" onClick={() => setBillPreview(null)}>Close</button></div></section></div> : null}
       {reportOpen ? <div className="receipt-modal-backdrop" role="presentation" onClick={() => setReportOpen(false)}><section className="receipt-modal cashbook-report-modal" role="dialog" aria-modal="true" aria-label="Cashbook report" onClick={(event) => event.stopPropagation()}><header><div><h2>Cashbook Report</h2><p>Review transactions and download the selected period.</p></div><button className="icon-action" type="button" onClick={() => setReportOpen(false)}>×</button></header><div className="cashbook-filters"><label>From<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label><label>To<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label></div><div className="cashbook-summary"><Metric label="Total In" value={moneyInr(cashbookTotals(reportEntries).in)} /><Metric label="Total Out" value={moneyInr(cashbookTotals(reportEntries).out)} /><Metric label="Net Balance" value={moneyInr(cashbookTotals(reportEntries).in - cashbookTotals(reportEntries).out)} /></div><div className="modal-form-actions"><button className="secondary-button" type="button" onClick={downloadReport}>Download Excel</button><button className="primary-button" type="button" onClick={printReport}>Print / Save PDF</button></div></section></div> : null}
     </DashboardGrid>
   );
