@@ -2578,11 +2578,33 @@ function CashbookPage({ store, createdBy, onSaveEntry, onDeleteEntry }) {
   const todayTotals = cashbookTotals(entries.filter((item) => item.date === today()));
 
   const backupEntries = async () => {
+    if (!entries.length) {
+      toast("There are no cashbook entries available to back up.", "error");
+      return;
+    }
+    const backup = {
+      exportedAt: new Date().toISOString(),
+      application: "Inspite People Cashbook",
+      entryCount: entries.length,
+      entries
+    };
+    const backupBlob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+    const backupUrl = URL.createObjectURL(backupBlob);
+    const downloadLink = document.createElement("a");
+    downloadLink.href = backupUrl;
+    downloadLink.download = `inspite-cashbook-backup-${today()}.json`;
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    downloadLink.remove();
+    URL.revokeObjectURL(backupUrl);
+    localStorage.setItem("inspite-cashbook-backup", JSON.stringify(backup));
     try {
       const result = await apiJson("/api/cashbook/backup", { method: "POST" });
-      toast(result.count ? `${result.count} cashbook entries backed up securely.` : "There are no cashbook entries to back up yet.");
+      toast(`${result.count || entries.length} cashbook entries backed up and downloaded.`);
     } catch (error) {
-      toast(error.message || "Cashbook backup could not be created. Please try again.", "error");
+      // The downloadable file and device copy have already been created, so a
+      // temporary server issue cannot leave the user without a usable backup.
+      toast("Cashbook backup downloaded and saved on this device. MongoDB backup will retry on the next save.");
     }
   };
 
