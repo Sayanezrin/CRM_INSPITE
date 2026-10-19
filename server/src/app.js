@@ -923,8 +923,13 @@ async function saveCashbookRecord(record, session) {
     { upsert: true }
   );
   // Store a compact per-entry backup instead of writing hundreds of backup
-  // documents on every save. Full backups remain available from the button.
-  await createCashbookBackup(models, [savedRecord], "after-save");
+  // documents on every save. A backup failure must never prevent the actual
+  // financial entry from being saved to MongoDB.
+  try {
+    await createCashbookBackup(models, [savedRecord], "after-save");
+  } catch (error) {
+    console.error("Cashbook after-save backup failed:", error.message);
+  }
   return savedRecord;
 }
 
