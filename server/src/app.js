@@ -1824,13 +1824,22 @@ app.get("/api/cashbook", async (req, res, next) => {
     if (req.session.role !== "admin" && req.session.role !== "hr") return res.status(403).json({ error: "Only Admin or Accountant can view cashbook entries." });
     const models = await getModels();
     if (!models?.Cashbook) return res.status(503).json({ error: "MongoDB storage is required for cashbook entries." });
-    const entries = await models.Cashbook.find({}).sort({ date: -1, updatedAt: -1, _id: -1 }).lean();
+    const requestedPage = Number.parseInt(req.query.page, 10);
+    const requestedLimit = Number.parseInt(req.query.limit, 10);
+    const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+    const limit = Math.min(Number.isFinite(requestedLimit) && requestedLimit > 0 ? requestedLimit : 25, 100);
+    const total = await models.Cashbook.countDocuments({});
+    const entries = await models.Cashbook.find({})
+      .sort({ date: -1, updatedAt: -1, _id: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean();
     // Do not return base64 bill files in the list response: hundreds of files
     // can exceed Vercel's response-size limit and hide the entire cashbook.
-    res.json(entries.map((entry) => ({
+    res.json({ total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)), entries: entries.map((entry) => ({
       ...toPortalCashbookRecord(entry),
       attachment: entry.attachment?.dataUrl ? { name: entry.attachment.name || "attachment", type: entry.attachment.type || "" } : null
-    })));
+    })) });
   } catch (error) {
     next(error);
   }
