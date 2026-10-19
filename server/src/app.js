@@ -1053,7 +1053,8 @@ async function deleteEmployeeRecord(id) {
     models.PortalUser?.deleteOne({ email: employeeEmail }),
     models.Attendance?.deleteMany({ employeeId }),
     models.Task?.deleteMany({ employeeId }),
-    models.Payslip?.deleteMany({ employeeId })
+    models.Payslip?.deleteMany({ employeeId }),
+    models.Leave?.deleteMany({ employeeId })
   ].filter(Boolean));
   await writePortalDocument(models, nextPortal);
 }

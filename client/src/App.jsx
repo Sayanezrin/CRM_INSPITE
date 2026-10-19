@@ -1164,6 +1164,34 @@ function App() {
     }
   };
 
+  const deleteEmployeeProfile = async (employeeId) => {
+    try {
+      await apiJson(`/api/employees/${encodeURIComponent(employeeId)}`, { method: "DELETE" });
+      setStore((current) => {
+        const employee = (current.employees || []).find((item) => String(item.id) === String(employeeId));
+        const employeeEmail = String(employee?.email || "").trim().toLowerCase();
+        const next = {
+          ...current,
+          employees: (current.employees || []).filter((item) => String(item.id) !== String(employeeId)),
+          leaves: (current.leaves || []).filter((item) => String(item.employeeId) !== String(employeeId)),
+          expenses: (current.expenses || []).filter((item) => String(item.employeeId) !== String(employeeId)),
+          attendance: (current.attendance || []).filter((item) => String(item.employeeId) !== String(employeeId)),
+          tasks: (current.tasks || []).filter((item) => String(item.employeeId) !== String(employeeId)),
+          payslips: (current.payslips || []).filter((item) => String(item.employeeId) !== String(employeeId)),
+          logins: (current.logins || []).filter((item) => String(item.employeeId) !== String(employeeId) && String(item.email || "").trim().toLowerCase() !== employeeEmail)
+        };
+        writeState(next);
+        return next;
+      });
+      window.setTimeout(refreshPortalState, 250);
+      toast("Employee deleted.");
+      return true;
+    } catch (error) {
+      toast(error.message || "Employee could not be deleted from MongoDB. Please try again.", "error");
+      return false;
+    }
+  };
+
   if (!session) {
     return <><LoginScreen store={store} onLogin={(nextSession) => { writeSession(nextSession); setSession(nextSession); setActivePage("home"); }} /><ToastHost /></>;
   }
@@ -1178,7 +1206,7 @@ function App() {
       <main className="portal-main">
         <Header session={session} store={store} activePage={activePage} apiStatus={apiStatus} />
         {session.role === "employee" && <InstallAppNotice installPrompt={installPrompt} onPromptUsed={() => setInstallPrompt(null)} />}
-        <RolePage session={session} activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} saveCashbookEntry={saveCashbookEntry} deleteCashbookEntry={deleteCashbookEntry} saveLeaveRequest={saveLeaveRequest} updateLeaveStatus={updateLeaveStatus} deleteLeaveRequest={deleteLeaveRequest} onEmployeeProfileLoaded={applyEmployeeProfilePayload} apiStatus={apiStatus} />
+        <RolePage session={session} activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} saveCashbookEntry={saveCashbookEntry} deleteCashbookEntry={deleteCashbookEntry} saveLeaveRequest={saveLeaveRequest} updateLeaveStatus={updateLeaveStatus} deleteLeaveRequest={deleteLeaveRequest} deleteEmployeeProfile={deleteEmployeeProfile} onEmployeeProfileLoaded={applyEmployeeProfilePayload} apiStatus={apiStatus} />
       </main>
       <ToastHost />
     </div>
@@ -1462,15 +1490,15 @@ function Header({ session, store, activePage, apiStatus }) {
   );
 }
 
-function RolePage({ session, activePage, store, commit, commitAttendance, deleteAttendance, saveCashbookEntry, deleteCashbookEntry, saveLeaveRequest, updateLeaveStatus, deleteLeaveRequest, onEmployeeProfileLoaded, apiStatus }) {
-  if (session.role === "admin") return <AdminPage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} saveCashbookEntry={saveCashbookEntry} deleteCashbookEntry={deleteCashbookEntry} updateLeaveStatus={updateLeaveStatus} session={session} apiStatus={apiStatus} />;
+function RolePage({ session, activePage, store, commit, commitAttendance, deleteAttendance, saveCashbookEntry, deleteCashbookEntry, saveLeaveRequest, updateLeaveStatus, deleteLeaveRequest, deleteEmployeeProfile, onEmployeeProfileLoaded, apiStatus }) {
+  if (session.role === "admin") return <AdminPage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} saveCashbookEntry={saveCashbookEntry} deleteCashbookEntry={deleteCashbookEntry} updateLeaveStatus={updateLeaveStatus} deleteEmployeeProfile={deleteEmployeeProfile} session={session} apiStatus={apiStatus} />;
   if (session.role === "hr") return <HrPage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} deleteAttendance={deleteAttendance} saveCashbookEntry={saveCashbookEntry} deleteCashbookEntry={deleteCashbookEntry} updateLeaveStatus={updateLeaveStatus} session={session} apiStatus={apiStatus} />;
   return <EmployeePage activePage={activePage} store={store} commit={commit} commitAttendance={commitAttendance} saveLeaveRequest={saveLeaveRequest} deleteLeaveRequest={deleteLeaveRequest} session={session} onEmployeeProfileLoaded={onEmployeeProfileLoaded} apiStatus={apiStatus} />;
 }
 
-function AdminPage({ activePage, store, commit, commitAttendance, deleteAttendance, saveCashbookEntry, deleteCashbookEntry, updateLeaveStatus, session, apiStatus }) {
+function AdminPage({ activePage, store, commit, commitAttendance, deleteAttendance, saveCashbookEntry, deleteCashbookEntry, updateLeaveStatus, deleteEmployeeProfile, session, apiStatus }) {
   if (activePage === "logins") return <DashboardGrid><AddLoginPanel commit={commit} /><LoginAccessTable logins={store.logins || []} commit={commit} className="full-row-panel" /></DashboardGrid>;
-  if (activePage === "employees") return <DashboardGrid><AddEmployeePanel commit={commit} /><EmployeeTable employees={store.employees} commit={commit} canEdit canDelete className="full-row-panel" /></DashboardGrid>;
+  if (activePage === "employees") return <DashboardGrid><AddEmployeePanel commit={commit} /><EmployeeTable employees={store.employees} commit={commit} onDeleteEmployee={deleteEmployeeProfile} canEdit canDelete className="full-row-panel" /></DashboardGrid>;
   if (activePage === "finance") return <DashboardGrid><AdminExpenseFormPanel store={store} commit={commit} createdBy="Admin" title="Add Debit Expense" /><FinancePanel store={store} commit={commit} canManage canExport className="full-row-panel" /></DashboardGrid>;
   if (activePage === "billing") return <BillingPage store={store} commit={commit} createdBy="Admin" />;
   if (activePage === "cashbook") return <CashbookPage store={store} createdBy="Admin" onSaveEntry={saveCashbookEntry} onDeleteEntry={deleteCashbookEntry} />;
@@ -3565,30 +3593,14 @@ function Metric({ label, value, className = "" }) {
 
 const employeeColumns = ["id", "name", "email", "accessRole", "department", "role", "salary", "joinedAt", "birthday", "bloodGroup", "mobile", "alternativeNumber", "aadhaar", "pan", "uan", "experience", "qualification", "college", "address", "status"];
 
-function EmployeeTable({ employees, commit, canEdit = false, canDelete = false, className = "" }) {
+function EmployeeTable({ employees, commit, onDeleteEmployee, canEdit = false, canDelete = false, className = "" }) {
   const [editingEmployee, setEditingEmployee] = useState(null);
 
   const deleteEmployee = async (employeeId) => {
-    if (!canDelete || !commit) return;
+    if (!canDelete || !onDeleteEmployee) return;
     const employeeToDelete = employees.find((employee) => employee.id === employeeId);
     if (!employeeToDelete || !window.confirm(`Delete ${employeeToDelete.name || "this employee"} and their related records? This cannot be undone.`)) return;
-    const employeeEmail = employeeToDelete?.email?.toLowerCase();
-    try {
-      await apiJson(`/api/employees/${encodeURIComponent(employeeId)}`, { method: "DELETE" });
-      commit((current) => ({
-        ...current,
-        employees: current.employees.filter((employee) => employee.id !== employeeId),
-        leaves: current.leaves.filter((leave) => leave.employeeId !== employeeId),
-        expenses: current.expenses.filter((expense) => expense.employeeId !== employeeId),
-        attendance: current.attendance.filter((record) => record.employeeId !== employeeId),
-        tasks: (current.tasks || []).filter((task) => task.employeeId !== employeeId),
-        payslips: (current.payslips || []).filter((payslip) => payslip.employeeId !== employeeId),
-        logins: (current.logins || []).filter((login) => login.employeeId !== employeeId && login.email?.toLowerCase() !== employeeEmail)
-      }));
-      toast("Employee deleted.");
-    } catch (error) {
-      toast(error.message || "Employee could not be deleted. Please try again.", "error");
-    }
+    await onDeleteEmployee(employeeId);
   };
 
   const updateEmployee = (updatedEmployee) => {
