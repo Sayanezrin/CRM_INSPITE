@@ -1110,7 +1110,6 @@ function App() {
         writeState(next);
         return next;
       });
-      window.setTimeout(refreshPortalState, 250);
       return true;
     } catch (error) {
       toast(error.message || "Cashbook entry was not saved to MongoDB. Please try again.", "error");
@@ -1126,7 +1125,6 @@ function App() {
         writeState(next);
         return next;
       });
-      window.setTimeout(refreshPortalState, 250);
       toast("Cashbook transaction deleted.");
       return true;
     } catch (error) {
@@ -2601,6 +2599,7 @@ function CashbookPage({ store, createdBy, onSaveEntry, onDeleteEntry }) {
   const [reportOpen, setReportOpen] = useState(false);
   const [pageData, setPageData] = useState(null);
   const [pageError, setPageError] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -2614,7 +2613,7 @@ function CashbookPage({ store, createdBy, onSaveEntry, onDeleteEntry }) {
       })
       .catch(() => active && setPageError("Cashbook entries could not be loaded."));
     return () => { active = false; };
-  }, [visibleMonth]);
+  }, [visibleMonth, reloadKey]);
 
   const entries = [...(pageData?.entries || store.cashbook || [])].sort((first, second) => String(second.date || "").localeCompare(String(first.date || "")) || String(second.createdAt || "").localeCompare(String(first.createdAt || "")));
   const filteredEntries = entries.filter((item) => (!filterDate || item.date === filterDate) && (paymentMode === "All" || item.paymentMode === paymentMode));
@@ -2670,6 +2669,7 @@ function CashbookPage({ store, createdBy, onSaveEntry, onDeleteEntry }) {
     if (!saved) return;
     setEntry(blankCashbookEntry());
     setEditingEntryId(null);
+    setReloadKey((current) => current + 1);
     toast(`${entry.type} transaction ${editingEntryId ? "updated" : "saved"}.`);
   };
 
@@ -2688,6 +2688,7 @@ function CashbookPage({ store, createdBy, onSaveEntry, onDeleteEntry }) {
   const deleteEntry = async (id) => {
     if (!window.confirm("Delete this cashbook transaction?")) return;
     const deleted = await onDeleteEntry(id);
+    if (deleted) setReloadKey((current) => current + 1);
     if (deleted && editingEntryId === id) {
       setEntry(blankCashbookEntry());
       setEditingEntryId(null);

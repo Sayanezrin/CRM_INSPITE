@@ -877,7 +877,7 @@ async function deleteBillRecord(id) {
 
 async function saveCashbookRecord(record, session) {
   const models = await getModels();
-  if (!models?.PortalState || !models?.Cashbook) {
+  if (!models?.Cashbook) {
     const error = new Error("MongoDB storage is required for cashbook entries.");
     error.status = 503;
     throw error;
@@ -892,9 +892,9 @@ async function saveCashbookRecord(record, session) {
     throw error;
   }
 
-  const portal = await getRecoveredPortalState();
   const entryId = String(record.id || crypto.randomUUID());
-  const existing = (portal.cashbook || []).find((item) => String(item.id) === entryId);
+  const existingDocument = await models.Cashbook.findOne({ id: entryId }).lean();
+  const existing = existingDocument ? toPortalCashbookRecord(existingDocument) : null;
   const attachment = record?.attachment?.dataUrl && String(record.attachment.dataUrl).length <= 3_000_000
     ? {
       name: String(record.attachment.name || "attachment").slice(0, 180),
@@ -916,21 +916,15 @@ async function saveCashbookRecord(record, session) {
     updatedAt: now
   };
 
-  const cashbook = [savedRecord, ...(portal.cashbook || []).filter((item) => String(item.id) !== entryId)];
-  await Promise.all(cashbook.map((entry) => {
-    const { createdAt, ...entryUpdate } = toPortalCashbookRecord(entry);
-    return models.Cashbook.updateOne(
-      { id: String(entry.id) },
-      { $set: entryUpdate, $setOnInsert: { createdAt: createdAt || now } },
-      { upsert: true }
-    );
-  }));
-  await writePortalDocument(models, {
-    ...portal,
-    cashbook,
-    cashbookCollectionEnabled: true
-  });
-  await createCashbookBackup(models, cashbook, "after-save");
+  const { createdAt, ...entryUpdate } = savedRecord;
+  await models.Cashbook.updateOne(
+    { id: entryId },
+    { $set: entryUpdate, $setOnInsert: { createdAt: createdAt || now } },
+    { upsert: true }
+  );
+  // Store a compact per-entry backup instead of writing hundreds of backup
+  // documents on every save. Full backups remain available from the button.
+  await createCashbookBackup(models, [savedRecord], "after-save");
   return savedRecord;
 }
 
