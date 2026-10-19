@@ -27,7 +27,16 @@ function normalizeMongoUri(uri) {
 
   const username = auth.slice(0, passwordSeparator);
   const password = auth.slice(passwordSeparator + 1);
-  const normalizedAuthority = `${username}:${encodeURIComponent(password)}@${host}`;
+  // Atlas connection strings often already URL-encode special characters in
+  // database passwords. Decode first so a value such as `%40` is not turned
+  // into `%2540`, which would make Atlas reject an otherwise valid URI.
+  let normalizedPassword;
+  try {
+    normalizedPassword = encodeURIComponent(decodeURIComponent(password));
+  } catch {
+    normalizedPassword = encodeURIComponent(password);
+  }
+  const normalizedAuthority = `${username}:${normalizedPassword}@${host}`;
   return `${value.slice(0, authorityStart)}${normalizedAuthority}${value.slice(authorityEnd)}`;
 }
 
