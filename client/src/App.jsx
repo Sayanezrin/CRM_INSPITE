@@ -2147,12 +2147,30 @@ function payslipNetAmount(payslip) {
   return Number(payslip.basic || 0) + Number(payslip.allowances || 0) - Number(payslip.deductions || 0);
 }
 
+function payslipCalendarDays(month) {
+  const match = String(month || "").match(/^(\d{4})-(\d{2})$/);
+  return match ? new Date(Number(match[1]), Number(match[2]), 0).getDate() : 0;
+}
+
+function defaultPayslipPayDate(month) {
+  const match = String(month || "").match(/^(\d{4})-(\d{2})$/);
+  if (!match) return "";
+  return `${match[1]}-${match[2]}-${String(payslipCalendarDays(month)).padStart(2, "0")}`;
+}
+
+function payslipPaidDays(payslip) {
+  return Number.isFinite(Number(payslip.paidDays)) && Number(payslip.paidDays) > 0
+    ? Number(payslip.paidDays)
+    : payslipCalendarDays(payslip.month);
+}
+
 function payslipHtml(payslip) {
   const logoUrl = new URL(inspiteLogoImage, window.location.origin).href;
   const allowanceNote = payslip.allowanceNotes ? `<p class="line-note">${escapeHtml(payslip.allowanceNotes)}</p>` : "";
   const deductionNote = payslip.deductionNotes ? `<p class="line-note">${escapeHtml(payslip.deductionNotes)}</p>` : "";
   const notes = payslip.notes ? `<section class="notes"><strong>Payroll Notes</strong><p>${escapeHtml(payslip.notes)}</p></section>` : "";
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Payslip ${escapeHtml(payslipMonthLabel(payslip.month))}</title><style>@page{size:A4;margin:15mm}*{box-sizing:border-box}body{font-family:Inter,Arial,sans-serif;background:#eef3f8;color:#17243a;margin:0;padding:34px}.payslip{max-width:790px;margin:auto;background:#fff;border:1px solid #d9e3ee;border-radius:12px;padding:42px;box-shadow:0 16px 38px rgba(22,39,64,.1)}.top{display:flex;justify-content:space-between;gap:28px;align-items:flex-start;padding-bottom:25px;border-bottom:3px solid #1769e0}.brand{display:flex;gap:16px;align-items:center}.brand img{width:154px;height:auto;object-fit:contain}.brand p,.muted{color:#687789;font-size:13px}.period{text-align:right}.period strong{display:block;font-size:18px;color:#132d52}.period p{margin:6px 0 0}.employee{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin:24px 0}.box{background:#f5f8fc;border:1px solid #e4ebf3;border-radius:8px;padding:18px 20px;min-width:0}.box p{margin:7px 0 0;font-size:14px;line-height:1.4}.box h2{margin:7px 0 0;font-size:16px;line-height:1.35;overflow-wrap:anywhere;word-break:break-word}.label{margin:0;color:#687789;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.amounts{width:100%;border-collapse:collapse;margin-top:4px}.amounts td{padding:15px 14px;border-bottom:1px solid #e2e9f1}.amounts td:last-child{text-align:right;font-weight:700}.line-note{margin:4px 14px 13px;color:#687789;font-size:12px}.net td{background:#eaf7ef;color:#12643f;border-bottom:0;font-size:19px;font-weight:800}.notes{margin-top:26px;padding:16px 18px;border-left:4px solid #1769e0;background:#f7faff;color:#45566d}.notes p{margin:7px 0 0;line-height:1.5}.footer{margin-top:34px;padding-top:16px;border-top:1px solid #e2e9f1;color:#78869a;font-size:11px;text-align:center}@media print{body{background:#fff;padding:0}.payslip{border:0;box-shadow:none;border-radius:0;padding:0}.employee{gap:14px;margin:18px 0}.box{padding:14px 16px}}</style></head><body><main class="payslip"><header class="top"><div class="brand"><img src="${logoUrl}" alt="Inspite Technologies"><div><p class="label">Inspite Technologies</p><p>Salary Payroll</p></div></div><div class="period"><strong>${escapeHtml(payslipMonthLabel(payslip.month))}</strong><p class="muted">Issued ${escapeHtml(billDate(payslip.updatedAt || today()))}</p></div></header><section class="employee"><div class="box"><p class="label">Employee</p><h2>${escapeHtml(payslip.employeeName)}</h2><p>${escapeHtml(payslip.employeeRole || "Employee")}</p></div><div class="box"><p class="label">Employee Details</p><h2>${escapeHtml(payslip.employeeId)}</h2><p>${escapeHtml(payslip.department || "General")}</p></div></section><table class="amounts"><tbody><tr><td>Basic Salary</td><td>${moneyInr(payslip.basic)}</td></tr><tr><td>Allowances</td><td>${moneyInr(payslip.allowances)}</td></tr></tbody></table>${allowanceNote}<table class="amounts"><tbody><tr><td>Deductions</td><td>− ${moneyInr(payslip.deductions)}</td></tr></tbody></table>${deductionNote}<table class="amounts"><tbody><tr class="net"><td>Net Pay</td><td>${moneyInr(payslipNetAmount(payslip))}</td></tr></tbody></table>${notes}<footer class="footer">This is a system-generated payslip from Inspite Technologies.</footer></main></body></html>`;
+  const payDate = payslip.payDate || defaultPayslipPayDate(payslip.month);
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Payslip ${escapeHtml(payslipMonthLabel(payslip.month))}</title><style>@page{size:A4;margin:15mm}*{box-sizing:border-box}body{font-family:Inter,Arial,sans-serif;background:#eef3f8;color:#17243a;margin:0;padding:34px}.payslip{max-width:790px;margin:auto;background:#fff;border:1px solid #d9e3ee;border-radius:12px;padding:42px;box-shadow:0 16px 38px rgba(22,39,64,.1)}.top{display:flex;justify-content:space-between;gap:28px;align-items:flex-start;padding-bottom:25px;border-bottom:3px solid #1769e0}.brand{display:flex;gap:16px;align-items:center}.brand img{width:154px;height:auto;object-fit:contain}.brand p,.muted{color:#687789;font-size:13px}.period{text-align:right}.period strong{display:block;font-size:18px;color:#132d52}.period p{margin:6px 0 0}.summary{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(190px,.85fr);gap:20px;margin:24px 0}.summary-title{margin:0 0 9px;color:#687789;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.summary-table{width:100%;border-collapse:collapse;font-size:13px}.summary-table td{padding:4px 0;vertical-align:top}.summary-table td:first-child{width:36%;color:#687789}.summary-table td:nth-child(2){width:16px;color:#687789}.net-summary{background:#edfbf2;border:1px solid #ccefd8;border-left:4px solid #169456;border-radius:8px;padding:16px 18px}.net-summary strong{display:block;color:#12643f;font-size:25px;line-height:1.1}.net-summary span{display:block;color:#526c60;font-size:11px;margin-top:4px}.net-summary hr{border:0;border-top:1px solid #cce6d5;margin:14px 0 10px}.days{display:grid;grid-template-columns:1fr auto;gap:7px;font-size:12px}.days span{margin:0;color:#526c60}.days b{color:#17243a}.amounts{width:100%;border-collapse:collapse;margin-top:4px}.amounts td{padding:15px 14px;border-bottom:1px solid #e2e9f1}.amounts td:last-child{text-align:right;font-weight:700}.line-note{margin:4px 14px 13px;color:#687789;font-size:12px}.notes{margin-top:26px;padding:16px 18px;border-left:4px solid #1769e0;background:#f7faff;color:#45566d}.notes p{margin:7px 0 0;line-height:1.5}.footer{margin-top:34px;padding-top:16px;border-top:1px solid #e2e9f1;color:#78869a;font-size:11px;text-align:center}@media print{body{background:#fff;padding:0}.payslip{border:0;box-shadow:none;border-radius:0;padding:0}.summary{gap:14px;margin:18px 0}}</style></head><body><main class="payslip"><header class="top"><div class="brand"><img src="${logoUrl}" alt="Inspite Technologies"><div><p class="label">Inspite Technologies</p><p>Salary Payroll</p></div></div><div class="period"><strong>${escapeHtml(payslipMonthLabel(payslip.month))}</strong><p class="muted">Issued ${escapeHtml(billDate(payslip.updatedAt || today()))}</p></div></header><section class="summary"><div><p class="summary-title">Employee Summary</p><table class="summary-table"><tbody><tr><td>Employee Name</td><td>:</td><td>${escapeHtml(payslip.employeeName)}</td></tr><tr><td>Designation</td><td>:</td><td>${escapeHtml(payslip.employeeRole || "Employee")}</td></tr><tr><td>Employee ID</td><td>:</td><td>${escapeHtml(payslip.employeeId)}</td></tr><tr><td>Date of Joining</td><td>:</td><td>${escapeHtml(billDate(payslip.joinedAt) || "--")}</td></tr><tr><td>Pay Period</td><td>:</td><td>${escapeHtml(payslipMonthLabel(payslip.month))}</td></tr><tr><td>Pay Date</td><td>:</td><td>${escapeHtml(billDate(payDate) || "--")}</td></tr></tbody></table></div><aside class="net-summary"><strong>${moneyInr(payslipNetAmount(payslip))}</strong><span>Employee Net Pay</span><hr><div class="days"><span>Paid Days</span><b>${payslipPaidDays(payslip)}</b><span>LOP Days</span><b>${Number(payslip.lopDays || 0)}</b></div></aside></section><table class="amounts"><tbody><tr><td>Basic Salary</td><td>${moneyInr(payslip.basic)}</td></tr><tr><td>Allowances</td><td>${moneyInr(payslip.allowances)}</td></tr></tbody></table>${allowanceNote}<table class="amounts"><tbody><tr><td>Deductions</td><td>− ${moneyInr(payslip.deductions)}</td></tr></tbody></table>${deductionNote}${notes}<footer class="footer">This is a system-generated payslip from Inspite Technologies.</footer></main></body></html>`;
 }
 
 function openPayslipPreview(payslip) {
@@ -2222,30 +2240,59 @@ async function downloadPayslip(payslip) {
   pdf.setLineWidth(0.9);
   pdf.line(margin, 34, right, 34);
 
-  const boxY = 43;
-  const boxGap = 7;
-  const boxWidth = (contentWidth - boxGap) / 2;
-  const drawInfoBox = (x, label, title, detail) => {
-    pdf.setFillColor(245, 248, 252);
-    pdf.setDrawColor(228, 235, 243);
-    pdf.roundedRect(x, boxY, boxWidth, 28, 2, 2, "FD");
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(8);
-    pdf.setTextColor(104, 119, 137);
-    pdf.text(label.toUpperCase(), x + 5, boxY + 7);
-    pdf.setFontSize(12);
-    pdf.setTextColor(23, 36, 58);
-    const titleLines = pdf.splitTextToSize(String(title || "--"), boxWidth - 10);
-    pdf.text(titleLines.slice(0, 2), x + 5, boxY + 14);
+  const summaryY = 43;
+  const netWidth = 57;
+  const netX = right - netWidth;
+  const summaryWidth = contentWidth - netWidth - 8;
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(8);
+  pdf.setTextColor(104, 119, 137);
+  pdf.text("EMPLOYEE SUMMARY", margin, summaryY + 4);
+  const drawSummaryRow = (label, value, index) => {
+    const y = summaryY + 11 + (index * 6);
     pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(9);
-    pdf.setTextColor(72, 89, 109);
-    pdf.text(String(detail || "--"), x + 5, boxY + 24);
+    pdf.setFontSize(8.5);
+    pdf.setTextColor(92, 106, 124);
+    pdf.text(label, margin, y);
+    pdf.text(":", margin + 31, y);
+    pdf.setTextColor(28, 40, 60);
+    pdf.text(String(value || "--"), margin + 36, y);
   };
-  drawInfoBox(margin, "Employee", payslip.employeeName, payslip.employeeRole || "Employee");
-  drawInfoBox(margin + boxWidth + boxGap, "Employee Details", payslip.employeeId, payslip.department || "General");
+  const payDate = payslip.payDate || defaultPayslipPayDate(payslip.month);
+  drawSummaryRow("Employee Name", payslip.employeeName, 0);
+  drawSummaryRow("Designation", payslip.employeeRole || "Employee", 1);
+  drawSummaryRow("Employee ID", payslip.employeeId, 2);
+  drawSummaryRow("Date of Joining", billDate(payslip.joinedAt) || "--", 3);
+  drawSummaryRow("Pay Period", payslipMonthLabel(payslip.month), 4);
+  drawSummaryRow("Pay Date", billDate(payDate) || "--", 5);
+  pdf.setDrawColor(218, 228, 238);
+  pdf.line(margin, summaryY + 49, margin + summaryWidth, summaryY + 49);
+  pdf.setFillColor(237, 251, 242);
+  pdf.setDrawColor(204, 239, 216);
+  pdf.roundedRect(netX, summaryY, netWidth, 49, 2, 2, "FD");
+  pdf.setDrawColor(22, 148, 86);
+  pdf.setLineWidth(1.2);
+  pdf.line(netX, summaryY + 2, netX, summaryY + 47);
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(14);
+  pdf.setTextColor(18, 100, 63);
+  pdf.text(moneyInr(payslipNetAmount(payslip)), netX + 5, summaryY + 12);
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(7.5);
+  pdf.setTextColor(82, 108, 96);
+  pdf.text("Employee Net Pay", netX + 5, summaryY + 18);
+  pdf.setDrawColor(204, 230, 213);
+  pdf.setLineWidth(0.2);
+  pdf.line(netX + 5, summaryY + 25, right - 5, summaryY + 25);
+  pdf.setTextColor(82, 108, 96);
+  pdf.text("Paid Days", netX + 5, summaryY + 33);
+  pdf.text("LOP Days", netX + 5, summaryY + 41);
+  pdf.setFont("helvetica", "bold");
+  pdf.setTextColor(23, 36, 58);
+  pdf.text(String(payslipPaidDays(payslip)), right - 5, summaryY + 33, { align: "right" });
+  pdf.text(String(Number(payslip.lopDays || 0)), right - 5, summaryY + 41, { align: "right" });
 
-  let y = 83;
+  let y = 105;
   drawRow("Basic Salary", moneyInr(payslip.basic), y); y += 12;
   drawRow("Allowances", moneyInr(payslip.allowances), y); y += 8;
   if (payslip.allowanceNotes) {
@@ -2296,11 +2343,15 @@ function EmployeePayslipsPage({ store, employee }) {
 
 function PayslipManagerPage({ store, commit, createdBy }) {
   const employees = (store.employees || []).filter((employee) => employee.accessRole === "employee");
-  const [form, setForm] = useState(() => ({ employeeId: employees[0]?.id || "", month: today().slice(0, 7), basic: employees[0]?.salary || "", allowances: "", allowanceNotes: "", deductions: "", deductionNotes: "", notes: "" }));
+  const initialMonth = today().slice(0, 7);
+  const blankForm = () => ({ employeeId: employees[0]?.id || "", month: initialMonth, payDate: defaultPayslipPayDate(initialMonth), paidDays: payslipCalendarDays(initialMonth), lopDays: 0, basic: employees[0]?.salary || "", allowances: "", allowanceNotes: "", deductions: "", deductionNotes: "", notes: "" });
+  const [form, setForm] = useState(blankForm);
   const [editingId, setEditingId] = useState(null);
   const slips = [...(store.payslips || [])].sort((a, b) => String(b.month).localeCompare(String(a.month)) || String(a.employeeName).localeCompare(String(b.employeeName)));
   const selectedEmployee = employees.find((employee) => employee.id === form.employeeId);
-  const update = (field, value) => setForm((current) => ({ ...current, [field]: value }));
+  const update = (field, value) => setForm((current) => field === "month"
+    ? { ...current, month: value, payDate: defaultPayslipPayDate(value), paidDays: payslipCalendarDays(value), lopDays: 0 }
+    : ({ ...current, [field]: value }));
   const chooseEmployee = (employeeId) => {
     const employee = employees.find((item) => item.id === employeeId);
     setForm((current) => ({ ...current, employeeId, basic: employee?.salary || current.basic }));
@@ -2310,18 +2361,18 @@ function PayslipManagerPage({ store, commit, createdBy }) {
     if (!selectedEmployee || !form.month) { toast("Select an employee and salary month.", "error"); return; }
     const duplicate = slips.find((item) => item.employeeId === selectedEmployee.id && item.month === form.month && item.id !== editingId);
     if (duplicate) { toast("A payslip already exists for this employee and month. Edit it instead.", "error"); return; }
-    const payslip = { id: editingId || uid("PAY"), employeeId: selectedEmployee.id, employeeName: selectedEmployee.name, employeeRole: selectedEmployee.role, department: selectedEmployee.department, month: form.month, basic: Number(form.basic || 0), allowances: Number(form.allowances || 0), allowanceNotes: String(form.allowanceNotes || "").trim(), deductions: Number(form.deductions || 0), deductionNotes: String(form.deductionNotes || "").trim(), notes: String(form.notes || "").trim(), createdBy, updatedAt: new Date().toISOString() };
+    const payslip = { id: editingId || uid("PAY"), employeeId: selectedEmployee.id, employeeName: selectedEmployee.name, employeeRole: selectedEmployee.role, department: selectedEmployee.department, joinedAt: selectedEmployee.joinedAt || "", month: form.month, payDate: form.payDate, paidDays: Number(form.paidDays || 0), lopDays: Number(form.lopDays || 0), basic: Number(form.basic || 0), allowances: Number(form.allowances || 0), allowanceNotes: String(form.allowanceNotes || "").trim(), deductions: Number(form.deductions || 0), deductionNotes: String(form.deductionNotes || "").trim(), notes: String(form.notes || "").trim(), createdBy, updatedAt: new Date().toISOString() };
     try {
       const savedPayslip = await apiJson(editingId ? `/api/payslips/${encodeURIComponent(editingId)}` : "/api/payslips", { method: editingId ? "PUT" : "POST", body: JSON.stringify(payslip) });
       commit((current) => ({ ...current, payslips: [savedPayslip, ...(current.payslips || []).filter((item) => item.id !== savedPayslip.id)] }));
     } catch (error) { toast(error.message || "Could not save payslip to the shared database.", "error"); return; }
     setEditingId(null);
-    setForm({ employeeId: employees[0]?.id || "", month: today().slice(0, 7), basic: employees[0]?.salary || "", allowances: "", allowanceNotes: "", deductions: "", deductionNotes: "", notes: "" });
+    setForm(blankForm());
     toast("Payslip saved.");
   };
-  const edit = (payslip) => { setEditingId(payslip.id); setForm({ employeeId: payslip.employeeId, month: payslip.month, basic: payslip.basic, allowances: payslip.allowances, allowanceNotes: payslip.allowanceNotes || "", deductions: payslip.deductions, deductionNotes: payslip.deductionNotes || "", notes: payslip.notes || "" }); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const edit = (payslip) => { setEditingId(payslip.id); setForm({ employeeId: payslip.employeeId, month: payslip.month, payDate: payslip.payDate || defaultPayslipPayDate(payslip.month), paidDays: payslipPaidDays(payslip), lopDays: Number(payslip.lopDays || 0), basic: payslip.basic, allowances: payslip.allowances, allowanceNotes: payslip.allowanceNotes || "", deductions: payslip.deductions, deductionNotes: payslip.deductionNotes || "", notes: payslip.notes || "" }); window.scrollTo({ top: 0, behavior: "smooth" }); };
   const remove = async (id) => { if (!window.confirm("Delete this payslip?")) return; try { await apiJson(`/api/payslips/${encodeURIComponent(id)}`, { method: "DELETE" }); commit((current) => ({ ...current, payslips: (current.payslips || []).filter((item) => item.id !== id) })); toast("Payslip deleted."); } catch (error) { toast(error.message || "Could not delete the payslip.", "error"); } };
-  return <DashboardGrid><Panel title={editingId ? "Update Payslip" : "Generate Monthly Payslip"} className="full-row-panel"><form className="form-grid payslip-form" onSubmit={save}><label>Employee<select value={form.employeeId} onChange={(event) => chooseEmployee(event.target.value)}><option value="">Select employee</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}</select></label><label>Salary Month<input type="month" value={form.month} onChange={(event) => update("month", event.target.value)} /></label><label>Basic Salary<input type="number" min="0" value={form.basic} onChange={(event) => update("basic", event.target.value)} /></label><label>Allowances<input type="number" min="0" value={form.allowances} onChange={(event) => update("allowances", event.target.value)} /></label><label>Allowance Reason / Details<input value={form.allowanceNotes} onChange={(event) => update("allowanceNotes", event.target.value)} placeholder="e.g. Travel allowance" /></label><label>Deductions<input type="number" min="0" value={form.deductions} onChange={(event) => update("deductions", event.target.value)} /></label><label>Deduction Reason / Details<input value={form.deductionNotes} onChange={(event) => update("deductionNotes", event.target.value)} placeholder="e.g. Professional tax" /></label><Metric label="Net Pay" value={moneyInr(Number(form.basic || 0) + Number(form.allowances || 0) - Number(form.deductions || 0))} /><label className="wide-input">Notes<textarea value={form.notes} onChange={(event) => update("notes", event.target.value)} placeholder="Optional payroll note" /></label><button type="submit" className="primary-button">{editingId ? "Update Payslip" : "Save Payslip"}</button>{editingId ? <button type="button" className="secondary-button" onClick={() => { setEditingId(null); setForm({ employeeId: employees[0]?.id || "", month: today().slice(0, 7), basic: employees[0]?.salary || "", allowances: "", allowanceNotes: "", deductions: "", deductionNotes: "", notes: "" }); }}>Cancel</button> : null}</form></Panel><Panel title="Issued Payslips" className="full-row-panel"><PayslipTable payslips={slips} canManage onEdit={edit} onDelete={remove} /></Panel></DashboardGrid>;
+  return <DashboardGrid><Panel title={editingId ? "Update Payslip" : "Generate Monthly Payslip"} className="full-row-panel"><form className="form-grid payslip-form" onSubmit={save}><label>Employee<select value={form.employeeId} onChange={(event) => chooseEmployee(event.target.value)}><option value="">Select employee</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}</select></label><label>Salary Month<input type="month" value={form.month} onChange={(event) => update("month", event.target.value)} /></label><label>Pay Date<input type="date" value={form.payDate} onChange={(event) => update("payDate", event.target.value)} /></label><label>Paid Days<input type="number" min="0" step="0.5" value={form.paidDays} onChange={(event) => update("paidDays", event.target.value)} /></label><label>LOP Days<input type="number" min="0" step="0.5" value={form.lopDays} onChange={(event) => update("lopDays", event.target.value)} /></label><label>Basic Salary<input type="number" min="0" value={form.basic} onChange={(event) => update("basic", event.target.value)} /></label><label>Allowances<input type="number" min="0" value={form.allowances} onChange={(event) => update("allowances", event.target.value)} /></label><label>Allowance Reason / Details<input value={form.allowanceNotes} onChange={(event) => update("allowanceNotes", event.target.value)} placeholder="e.g. Travel allowance" /></label><label>Deductions<input type="number" min="0" value={form.deductions} onChange={(event) => update("deductions", event.target.value)} /></label><label>Deduction Reason / Details<input value={form.deductionNotes} onChange={(event) => update("deductionNotes", event.target.value)} placeholder="e.g. Professional tax" /></label><Metric label="Net Pay" value={moneyInr(Number(form.basic || 0) + Number(form.allowances || 0) - Number(form.deductions || 0))} /><label className="wide-input">Notes<textarea value={form.notes} onChange={(event) => update("notes", event.target.value)} placeholder="Optional payroll note" /></label><button type="submit" className="primary-button">{editingId ? "Update Payslip" : "Save Payslip"}</button>{editingId ? <button type="button" className="secondary-button" onClick={() => { setEditingId(null); setForm(blankForm()); }}>Cancel</button> : null}</form></Panel><Panel title="Issued Payslips" className="full-row-panel"><PayslipTable payslips={slips} canManage onEdit={edit} onDelete={remove} /></Panel></DashboardGrid>;
 }
 
 function PayslipTable({ payslips, canManage = false, onEdit, onDelete }) {
