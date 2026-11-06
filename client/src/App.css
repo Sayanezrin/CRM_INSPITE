@@ -562,6 +562,19 @@ button:disabled {
   font-size: 12px;
 }
 
+.payslip-preview-modal {
+  width: min(980px, calc(100vw - 32px));
+}
+
+.payslip-preview-frame {
+  height: min(78vh, 860px);
+  min-height: 520px;
+}
+
+.payslip-preview-frame iframe {
+  height: 100%;
+}
+
 .danger-text { color: var(--red); }
 
 .cashbook-summary,
