@@ -188,6 +188,7 @@ function createModels(connection) {
     month: { type: String, index: true },
     payDate: String,
     paidDays: Number,
+    leaveDays: Number,
     lopDays: Number,
     basic: Number,
     allowances: Number,

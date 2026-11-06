@@ -725,6 +725,7 @@ function toPayslipDocument(record, employees = [], now = new Date()) {
     month: String(record.month || ""),
     payDate: String(record.payDate || ""),
     paidDays: Number(record.paidDays || 0),
+    leaveDays: Number(record.leaveDays || 0),
     lopDays: Number(record.lopDays || 0),
     basic: Number(record.basic || 0),
     allowances: Number(record.allowances || 0),
