@@ -1437,6 +1437,50 @@ button:disabled {
   border-radius: 7px;
 }
 
+.payslip-records-scroll {
+  max-height: 480px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.payslip-records-scroll .payslip-records {
+  border: 0;
+  border-radius: 0;
+}
+
+.payslip-records .data-head,
+.payslip-records .data-row {
+  grid-template-columns: minmax(170px, 1.25fr) minmax(130px, .9fr) minmax(125px, .85fr) minmax(125px, .85fr) minmax(115px, .8fr) minmax(390px, 2.2fr);
+  min-width: 1160px;
+}
+
+.verification-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 12px;
+}
+
+.verification-badge.verified {
+  color: #087647;
+  background: #e7f8ed;
+}
+
+.verification-badge.pending {
+  color: #a16000;
+  background: #fff3d9;
+}
+
+.verify-action {
+  color: #087647;
+  border-color: #91d8b3;
+  background: #effbf4;
+}
+
 .leave-records .icon-action {
   width: 34px;
   height: 34px;

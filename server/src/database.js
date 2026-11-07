@@ -197,6 +197,9 @@ function createModels(connection) {
     deductionNotes: String,
     notes: String,
     createdBy: String,
+    verified: Boolean,
+    verifiedBy: String,
+    verifiedAt: Date,
     createdAt: Date,
     updatedAt: Date
   }, { collection: "payslips", versionKey: false, strict: false });

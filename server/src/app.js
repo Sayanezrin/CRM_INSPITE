@@ -734,6 +734,9 @@ function toPayslipDocument(record, employees = [], now = new Date()) {
     deductionNotes: String(record.deductionNotes || ""),
     notes: String(record.notes || ""),
     createdBy: String(record.createdBy || ""),
+    verified: Boolean(record.verified),
+    verifiedBy: String(record.verifiedBy || ""),
+    verifiedAt: record.verifiedAt || null,
     updatedAt: record.updatedAt || now
   };
 }
@@ -830,6 +833,7 @@ async function savePayslipRecord(record, session) {
     throw error;
   }
   const now = new Date();
+  const existing = record.id ? await models.Payslip.findOne({ id: String(record.id) }).lean() : null;
   const savedRecord = toPayslipDocument({
     ...record,
     id: String(record.id || crypto.randomUUID()),
@@ -837,7 +841,10 @@ async function savePayslipRecord(record, session) {
     employeeRole: employee.role,
     employeeEmail: employee.email,
     department: employee.department,
-    createdBy: session?.name || record.createdBy || "Admin"
+    createdBy: session?.name || record.createdBy || "Admin",
+    verified: Boolean(existing?.verified),
+    verifiedBy: existing?.verifiedBy || "",
+    verifiedAt: existing?.verifiedAt || null
   }, portal.employees, now);
   if (!/^\d{4}-\d{2}$/.test(savedRecord.month)) {
     const error = new Error("A valid salary month is required.");
@@ -855,6 +862,39 @@ async function savePayslipRecord(record, session) {
   };
   await writePortalDocument(models, nextPortal);
   return savedRecord;
+}
+
+async function verifyPayslipRecord(id, session) {
+  const models = await getModels();
+  if (!models?.Payslip) {
+    const error = new Error("MongoDB storage is required for payslips.");
+    error.status = 503;
+    throw error;
+  }
+  const existing = await models.Payslip.findOne({ id: String(id) }).lean();
+  if (!existing) {
+    const error = new Error("The payslip was not found.");
+    error.status = 404;
+    throw error;
+  }
+  const verifiedAt = new Date();
+  const savedRecord = {
+    ...existing,
+    verified: true,
+    verifiedBy: session?.name || "Admin",
+    verifiedAt,
+    updatedAt: verifiedAt
+  };
+  await models.Payslip.updateOne(
+    { id: savedRecord.id },
+    { $set: { verified: true, verifiedBy: savedRecord.verifiedBy, verifiedAt, updatedAt: verifiedAt } }
+  );
+  const portal = await getRecoveredPortalState();
+  await writePortalDocument(models, {
+    ...portal,
+    payslips: [savedRecord, ...(portal.payslips || []).filter((item) => String(item.id) !== savedRecord.id)]
+  });
+  return toPayslipDocument(savedRecord, portal.employees || [], verifiedAt);
 }
 
 async function deletePayslipRecord(id) {
@@ -1862,6 +1902,15 @@ app.put("/api/payslips/:id", async (req, res, next) => {
     res.json(await savePayslipRecord({ ...req.body, id: req.params.id }, req.session));
   } catch (error) {
     if (error?.code === 11000) return res.status(409).json({ error: "A payslip already exists for this employee and month." });
+    next(error);
+  }
+});
+
+app.patch("/api/payslips/:id/verify", async (req, res, next) => {
+  try {
+    if (req.session.role !== "admin") return res.status(403).json({ error: "Only Admin can verify payslips." });
+    res.json(await verifyPayslipRecord(req.params.id, req.session));
+  } catch (error) {
     next(error);
   }
 });
